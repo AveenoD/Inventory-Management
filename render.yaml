@@ -1,16 +1,31 @@
+# Render Blueprint — connect repo → New Blueprint → deploy API
+# Required dashboard env (set before first deploy):
+#   DATABASE_URL  — Supabase Postgres pooler URI
+#   CORS_ORIGIN   — Netlify site URL (e.g. https://your-app.netlify.app)
 services:
   - type: web
     name: sk-mobile-api
     runtime: node
-    rootDir: apps/api
-    buildCommand: npm install && npm run build && npx prisma generate
-    startCommand: npm run start
+    plan: free
+    healthCheckPath: /health
+    buildCommand: >-
+      npm ci &&
+      npm run build --workspace=@sk-mobile/shared &&
+      npm run db:generate --workspace=@sk-mobile/api &&
+      npm run build --workspace=@sk-mobile/api
+    startCommand: npm run start:prod --workspace=@sk-mobile/api
     envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 24h
       - key: CORS_ORIGIN
         sync: false
-      - key: NODE_ENV
-        value: production
+      - key: PORT
+        value: "10000"

@@ -19,13 +19,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate Prisma client
+        run: npm run db:generate --workspace=@sk-mobile/api
+
       - run: npm run build --workspace=@sk-mobile/shared
       - run: npm run lint --workspace=@sk-mobile/shared
       - run: npm run lint --workspace=@sk-mobile/api
       - run: npm run test --workspace=@sk-mobile/api
-
-      - name: Generate Prisma client
-        run: npm run db:generate --workspace=@sk-mobile/api
 
       - run: npm run build --workspace=@sk-mobile/web
         env:

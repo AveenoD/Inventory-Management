@@ -4,14 +4,16 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/** Default shop owner (created/updated on every seed run) */
+const SEED_EMAIL = "skmobile@gmail.com";
+const SEED_PASSWORD = "SK@7869123";
+
 async function main() {
-  const email = process.env.SEED_EMAIL ?? "owner@skmobile.local";
-  const password = process.env.SEED_PASSWORD ?? "changeme";
-  const hash = await bcrypt.hash(password, 12);
+  const hash = await bcrypt.hash(SEED_PASSWORD, 12);
 
   const user = await prisma.user.upsert({
-    where: { email },
-    create: { email, passwordHash: hash },
+    where: { email: SEED_EMAIL },
+    create: { email: SEED_EMAIL, passwordHash: hash },
     update: { passwordHash: hash },
   });
 
@@ -19,5 +21,8 @@ async function main() {
 }
 
 main()
-  .catch(console.error)
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());

@@ -1,0 +1,13 @@
+# Netlify — connect repo → auto-detects this file
+# Set in Netlify UI → Environment variables:
+#   NEXT_PUBLIC_API_URL = https://sk-mobile-api.onrender.com  (your Render API URL)
+
+[build]
+  command = "npm ci && npm run build --workspace=@sk-mobile/shared && npm run build --workspace=@sk-mobile/web"
+  publish = "apps/web/.next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

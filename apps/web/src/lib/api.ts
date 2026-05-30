@@ -138,24 +138,12 @@ export const api = {
     withAuth(() => client.bulkExtraIncome(monthId, entries)),
   bulkShopExpense: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkShopExpense(monthId, entries)),
-  getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
-    const q = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    return withAuth(() =>
-      requestJson(`/api/v1/months/${monthId}/shop-expenses?${q.toString()}`),
-    );
-  },
+  getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
+    withAuth(() => client.getShopExpenses(monthId, page, limit, from, to)),
   bulkDamage: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkDamage(monthId, entries)),
-  getDamages: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
-    const q = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    return withAuth(() =>
-      requestJson(`/api/v1/months/${monthId}/damages?${q.toString()}`),
-    );
-  },
+  getDamages: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
+    withAuth(() => client.getDamages(monthId, page, limit, from, to)),
   bulkParty: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkParty(monthId, entries)),
   bulkUdhhar: (monthId: string, entries: unknown[]) =>
@@ -180,14 +168,8 @@ export const api = {
   },
   bulkWithdrawal: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkWithdrawal(monthId, entries)),
-  getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
-    const q = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (from) q.set("from", from);
-    if (to) q.set("to", to);
-    return withAuth(() =>
-      requestJson(`/api/v1/months/${monthId}/withdrawals?${q.toString()}`),
-    );
-  },
+  getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
+    withAuth(() => client.getWithdrawals(monthId, page, limit, from, to)),
   getParties: (monthId: string, page?: number, search?: string) =>
     withAuth(() => client.getParties(monthId, page, search)),
   health: () => client.health(),
