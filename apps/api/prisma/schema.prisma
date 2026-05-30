@@ -1,0 +1,433 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+enum ProductKind {
+  MOBILE
+  MOBILE_ACCESSORY
+  REPAIR_PART
+  SPEAKERS_SOUND
+  CHARGER_CABLE
+}
+
+enum RepairJobStatus {
+  RECEIVED
+  IN_PROGRESS
+  REPAIRED_PENDING_PICKUP
+  DELIVERED
+  UNREPAIRABLE_RETURNED
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  passwordHash   String
+  createdAt      DateTime        @default(now())
+  businessMonths BusinessMonth[]
+  categories     Category[]
+  products       Product[]
+  sales          Sale[]
+  parties        Party[]
+  coverTypes     CoverType[]
+}
+
+model BusinessMonth {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int
+  openingBalance Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  moneyTransferDays    MoneyTransferDay[]
+  rechargeDays         RechargeDay[]
+  repairDays           RepairDay[]
+  mobileAccessoryDays  MobileAccessoryDay[]
+  extraIncomeEntries   ExtraIncomeEntry[]
+  shopExpenseDays      ShopExpenseDay[]
+  damageDays           DamageDay[]
+  partyLedgerEntries   PartyLedgerEntry[]
+  udhharDays           UdhharDay[]
+  bankBalanceDays      BankBalanceDay[]
+  withdrawals          Withdrawal[]
+  sales                Sale[]
+  rechargeEntries      RechargeEntry[]
+  transferEntries      TransferEntry[]
+  repairJobs           RepairJob[]
+  partyTransactions    PartyTransaction[]
+
+  @@unique([userId, year, month])
+  @@index([userId])
+}
+
+model MoneyTransferDay {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  dmt99Dmt        Decimal       @default(0) @db.Decimal(14, 2)
+  dmt99Aeps       Decimal       @default(0) @db.Decimal(14, 2)
+  dmt99Nepal      Decimal       @default(0) @db.Decimal(14, 2)
+  dmt99BillPay    Decimal       @default(0) @db.Decimal(14, 2)
+  dmt99Qr         Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Dmt        Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Aeps       Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Credit     Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86BillPay    Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Wallet     Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Qr         Decimal       @default(0) @db.Decimal(14, 2)
+  dmt86Nepal      Decimal       @default(0) @db.Decimal(14, 2)
+  imeAeps         Decimal       @default(0) @db.Decimal(14, 2)
+  imeNepal        Decimal       @default(0) @db.Decimal(14, 2)
+  total           Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model RechargeDay {
+  id                 String        @id @default(cuid())
+  businessMonthId    String
+  businessMonth      BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date               DateTime      @db.Date
+  airtelSaleProfit   Decimal       @default(0) @db.Decimal(14, 2)
+  airtelChillar      Decimal       @default(0) @db.Decimal(14, 2)
+  airtelAct          Decimal       @default(0) @db.Decimal(14, 2)
+  airtelMnp          Decimal       @default(0) @db.Decimal(14, 2)
+  jioSaleProfit      Decimal       @default(0) @db.Decimal(14, 2)
+  jioChillar         Decimal       @default(0) @db.Decimal(14, 2)
+  jioAct             Decimal       @default(0) @db.Decimal(14, 2)
+  jioMnp             Decimal       @default(0) @db.Decimal(14, 2)
+  viSaleProfit       Decimal       @default(0) @db.Decimal(14, 2)
+  viChillar          Decimal       @default(0) @db.Decimal(14, 2)
+  viAct              Decimal       @default(0) @db.Decimal(14, 2)
+  viMnp              Decimal       @default(0) @db.Decimal(14, 2)
+  bsnlSaleProfit     Decimal       @default(0) @db.Decimal(14, 2)
+  bsnlChillar        Decimal       @default(0) @db.Decimal(14, 2)
+  bsnlAct            Decimal       @default(0) @db.Decimal(14, 2)
+  bsnlMnp            Decimal       @default(0) @db.Decimal(14, 2)
+  allInOneSaleProfit Decimal       @default(0) @db.Decimal(14, 2)
+  allInOneChillar    Decimal       @default(0) @db.Decimal(14, 2)
+  total              Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model RepairDay {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  jobCount        Int           @default(0)
+  sale            Decimal       @default(0) @db.Decimal(14, 2)
+  cost            Decimal       @default(0) @db.Decimal(14, 2)
+  profit          Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model MobileAccessoryDay {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  sale            Decimal       @default(0) @db.Decimal(14, 2)
+  cost            Decimal       @default(0) @db.Decimal(14, 2)
+  profit          Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model ExtraIncomeEntry {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  description     String?
+  amount          Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@index([businessMonthId, date])
+}
+
+model ShopExpenseDay {
+  id                String        @id @default(cuid())
+  businessMonthId   String
+  businessMonth     BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date              DateTime      @db.Date
+  salaryDescription String?
+  salaryAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  teaDescription    String?
+  teaAmount         Decimal       @default(0) @db.Decimal(14, 2)
+  shopExpDescription String?
+  shopExpAmount     Decimal       @default(0) @db.Decimal(14, 2)
+  total             Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model DamageDay {
+  id                     String        @id @default(cuid())
+  businessMonthId        String
+  businessMonth          BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date                   DateTime      @db.Date
+  accessoriesDescription String?
+  accessoriesAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  repairingDescription   String?
+  repairingAmount        Decimal       @default(0) @db.Decimal(14, 2)
+  amount                 Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model PartyLedgerEntry {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  partyName       String
+  materialIn      Decimal       @default(0) @db.Decimal(14, 2)
+  paymentOut      Decimal       @default(0) @db.Decimal(14, 2)
+  outstanding     Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@index([businessMonthId, date])
+  @@index([businessMonthId, partyName])
+}
+
+model UdhharDay {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  paymentOut      Decimal       @default(0) @db.Decimal(14, 2)
+  paymentIn       Decimal       @default(0) @db.Decimal(14, 2)
+  net             Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model BankBalanceDay {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  directAc        Decimal       @default(0) @db.Decimal(14, 2)
+  salesQr         Decimal       @default(0) @db.Decimal(14, 2)
+  transferQr      Decimal       @default(0) @db.Decimal(14, 2)
+  cash            Decimal       @default(0) @db.Decimal(14, 2)
+  total           Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@unique([businessMonthId, date])
+  @@index([businessMonthId, date])
+}
+
+model Withdrawal {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  description     String?
+  cash            Decimal       @default(0) @db.Decimal(14, 2)
+  bank            Decimal       @default(0) @db.Decimal(14, 2)
+  total           Decimal       @default(0) @db.Decimal(14, 2)
+
+  @@index([businessMonthId, date])
+}
+
+model Category {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  products  Product[]
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model CoverType {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime  @default(now())
+  products  Product[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model Product {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId     String?
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  kind           ProductKind     @default(MOBILE_ACCESSORY)
+  name           String
+  sku            String?
+  phoneModel     String?
+  coverTypeId    String?
+  coverType      CoverType?      @relation(fields: [coverTypeId], references: [id], onDelete: SetNull)
+  partType       String?
+  repairCharge   Decimal?        @db.Decimal(14, 2)
+  buyPrice       Decimal         @default(0) @db.Decimal(14, 2)
+  sellPrice      Decimal         @default(0) @db.Decimal(14, 2)
+  stockQty       Int             @default(0)
+  minStock       Int             @default(0)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  stockMovements StockMovement[]
+  saleLines      SaleLine[]
+
+  @@index([userId])
+  @@index([userId, name])
+  @@index([userId, kind])
+}
+
+model StockMovement {
+  id        String            @id @default(cuid())
+  productId String
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      StockMovementType
+  quantity  Int
+  unitCost  Decimal?          @db.Decimal(14, 2)
+  note      String?
+  saleId    String?
+  sale      Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdAt DateTime          @default(now())
+
+  @@index([productId, createdAt])
+}
+
+model Sale {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessMonthId String?
+  businessMonth   BusinessMonth?  @relation(fields: [businessMonthId], references: [id], onDelete: SetNull)
+  date            DateTime        @db.Date
+  customerName    String?
+  paymentMethod   String          @default("CASH")
+  total           Decimal         @default(0) @db.Decimal(14, 2)
+  totalCost       Decimal         @default(0) @db.Decimal(14, 2)
+  createdAt       DateTime        @default(now())
+  lines           SaleLine[]
+  stockMovements  StockMovement[]
+
+  @@index([userId, date])
+  @@index([businessMonthId, date])
+}
+
+model SaleLine {
+  id        String  @id @default(cuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity  Int
+  unitPrice Decimal @db.Decimal(14, 2)
+  unitCost  Decimal @db.Decimal(14, 2)
+  lineTotal Decimal @db.Decimal(14, 2)
+
+  @@index([saleId])
+}
+
+model RechargeEntry {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  operator        String
+  entryType       String
+  amount          Decimal       @db.Decimal(14, 2)
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  @@index([businessMonthId, date])
+}
+
+model TransferEntry {
+  id              String        @id @default(cuid())
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  serviceKey      String
+  amount          Decimal       @db.Decimal(14, 2)
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  @@index([businessMonthId, date])
+}
+
+model RepairJob {
+  id               String           @id @default(cuid())
+  businessMonthId  String
+  businessMonth    BusinessMonth    @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date             DateTime         @db.Date
+  status           RepairJobStatus  @default(RECEIVED)
+  customerName     String?
+  customerPhone    String?
+  device           String?
+  issueDescription String?
+  partsCost        Decimal          @default(0) @db.Decimal(14, 2)
+  labourCost       Decimal          @default(0) @db.Decimal(14, 2)
+  salePrice        Decimal          @default(0) @db.Decimal(14, 2)
+  profit           Decimal          @default(0) @db.Decimal(14, 2)
+  deliveredAt      DateTime?        @db.Date
+  note             String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([businessMonthId, date])
+  @@index([businessMonthId, status])
+}
+
+model Party {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String?
+  createdAt    DateTime           @default(now())
+  transactions PartyTransaction[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model PartyTransaction {
+  id              String        @id @default(cuid())
+  partyId         String
+  party           Party         @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  businessMonthId String
+  businessMonth   BusinessMonth @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  date            DateTime      @db.Date
+  materialIn      Decimal       @default(0) @db.Decimal(14, 2)
+  paymentOut      Decimal       @default(0) @db.Decimal(14, 2)
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  @@index([businessMonthId, date])
+  @@index([partyId])
+}

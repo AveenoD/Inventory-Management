@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install && npm run build --workspace=@sk-mobile/api && npm run db:generate --workspace=@sk-mobile/api"
+
+[deploy]
+startCommand = "npm run start --workspace=@sk-mobile/api"
+healthcheckPath = "/health"
+restartPolicyType = "ON_FAILURE"

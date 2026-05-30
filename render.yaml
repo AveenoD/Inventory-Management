@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: sk-mobile-api
+    runtime: node
+    rootDir: apps/api
+    buildCommand: npm install && npm run build && npx prisma generate
+    startCommand: npm run start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+      - key: NODE_ENV
+        value: production
