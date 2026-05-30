@@ -14,13 +14,30 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { requestTimeout } from "./middleware/request-timeout.js";
 import { prisma } from "./lib/prisma.js";
 
+const PRODUCTION_WEB_ORIGINS = [
+  "https://sk-inventory.netlify.app",
+  "http://localhost:3000",
+];
+
+function getAllowedOrigins(): string[] {
+  const fromEnv = process.env.CORS_ORIGIN?.split(",").map((o) => o.trim()).filter(Boolean);
+  return [...new Set([...PRODUCTION_WEB_ORIGINS, ...(fromEnv ?? [])])];
+}
+
 export function createApp() {
   const app = express();
+  const allowedOrigins = getAllowedOrigins();
 
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.CORS_ORIGIN?.split(",") ?? "http://localhost:3000",
+      origin(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(null, false);
+        }
+      },
       credentials: true,
     }),
   );

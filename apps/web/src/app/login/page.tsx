@@ -32,9 +32,6 @@ export default function LoginPage() {
       <div className="login-box card">
         <h1>SK Mobile Shop</h1>
         <p style={{ color: "var(--muted)" }}>Sign in to your dashboard</p>
-        <p style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-          Default: skmobile@gmail.com / SK@7869123
-        </p>
         <form onSubmit={handleSubmit} style={{ marginTop: "1.5rem" }}>
           <label className="stat-label">Email</label>
           <input

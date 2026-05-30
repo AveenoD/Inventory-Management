@@ -26,6 +26,6 @@ services:
       - key: JWT_EXPIRES_IN
         value: 24h
       - key: CORS_ORIGIN
-        sync: false
+        value: "https://sk-inventory.netlify.app"
       - key: PORT
         value: "10000"
