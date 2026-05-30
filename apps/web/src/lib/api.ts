@@ -1,7 +1,26 @@
 import { createApiClient, ApiError } from "@sk-mobile/shared";
 import { getToken, clearToken } from "./auth";
 
-const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+/** Render production API — used on Netlify / any non-localhost host */
+const PRODUCTION_API_URL = "https://sk-mobile-api.onrender.com";
+const LOCAL_API_URL = "http://localhost:4000";
+
+function resolveApiBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return LOCAL_API_URL;
+    }
+    return PRODUCTION_API_URL;
+  }
+
+  return PRODUCTION_API_URL;
+}
+
+const baseUrl = resolveApiBaseUrl();
 
 const client = createApiClient(baseUrl, getToken);
 
