@@ -17,7 +17,7 @@ import {
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, parseMoneyInput } from "@/lib/format";
 
 type CartLine = {
   productId: string;
@@ -139,9 +139,9 @@ export default function NewSalePage() {
   }
 
   const subtotal = cart.reduce((a, c) => a + c.qty * c.unitPrice, 0);
-  const discountValue = parseFloat(discount) || 0;
+  const discountValue = parseMoneyInput(discount);
   const total = Math.max(0, subtotal - discountValue);
-  const received = parseFloat(amountReceived) || 0;
+  const received = parseMoneyInput(amountReceived);
   const change = Math.max(0, received - total);
 
   const totalPages = meta?.totalPages ?? 1;

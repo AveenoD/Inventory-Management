@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { monthLabel, formatMoney } from "@/lib/format";
+import { monthLabel, formatMoney, parseMoneyInput } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -33,7 +33,7 @@ export function MonthsList() {
 
   const createMutation = useMutation({
     mutationFn: () =>
-      api.createMonth({ year, month, openingBalance: parseFloat(opening) || 0 }),
+      api.createMonth({ year, month, openingBalance: parseMoneyInput(opening) }),
     onSuccess: (m) => {
       qc.invalidateQueries({ queryKey: ["months"] });
       qc.invalidateQueries({ queryKey: ["months", "context"] });

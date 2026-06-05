@@ -10,7 +10,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
-import { formatMoney } from "@/lib/format";
+import {
+  RECHARGE_OPERATORS,
+  RECHARGE_AMOUNT_FIELDS,
+  getRechargeEntryTypeLabel,
+  type RechargeOperator,
+} from "@sk-mobile/shared";
+import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 import {
   Calendar,
   Download,
@@ -27,13 +33,19 @@ type RechargeRow = {
   operator: string;
   entryType: string;
   amount: string;
+  rechargeAmount?: string | null;
   note?: string | null;
   mobileNumber?: string | null;
 };
 
-const OPERATORS = ["AIRTEL", "JIO", "VI", "BSNL", "ALL_IN_ONE"] as const;
-const TYPES = ["SALE_PROFIT", "CHILLAR", "ACT", "MNP"] as const;
 const PAGE_SIZES = [10, 25, 50] as const;
+
+const EMPTY_AMOUNTS = {
+  saleProfit: "",
+  chillar: "",
+  act: "",
+  mnp: "",
+};
 
 function extractMobile(row: RechargeRow): string | null {
   const fromField = row.mobileNumber?.trim();
@@ -43,7 +55,7 @@ function extractMobile(row: RechargeRow): string | null {
   return match ? match[0] : null;
 }
 
-type OperatorKey = (typeof OPERATORS)[number];
+type OperatorKey = RechargeOperator;
 
 const OPERATOR_LOGOS: Record<OperatorKey, { primary: string; fallback: string | null; alt: string }> = {
   AIRTEL: {
@@ -106,10 +118,9 @@ export default function RechargePage() {
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
-  const [operator, setOperator] = useState<(typeof OPERATORS)[number]>("AIRTEL");
-  const [entryType, setEntryType] = useState<(typeof TYPES)[number]>("SALE_PROFIT");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+  const [operator, setOperator] = useState<RechargeOperator>("AIRTEL");
+  const [rechargeAmount, setRechargeAmount] = useState("");
+  const [amounts, setAmounts] = useState(EMPTY_AMOUNTS);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -139,10 +150,10 @@ export default function RechargePage() {
     });
   }, [entries, operatorFilter, typeFilter, searchDebounced]);
 
-  const pageTotal = filteredEntries.reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
-  const todayTotal = filteredEntries
-    .filter((r) => r.date === today)
-    .reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
+  const pageTotal = sumMoney(filteredEntries.map((r) => r.amount));
+  const todayTotal = sumMoney(
+    filteredEntries.filter((r) => r.date === today).map((r) => r.amount),
+  );
 
   const showingFrom = Math.min((page - 1) * pageSize + 1, totalTx || 0);
   const showingTo = Math.min(page * pageSize, totalTx || 0);
@@ -152,16 +163,18 @@ export default function RechargePage() {
       api.createRechargeEntry(monthId!, {
         date,
         operator,
-        entryType,
-        amount: parseFloat(amount) || 0,
-        note: note.trim() ? note.trim() : undefined,
+        rechargeAmount: parseMoneyInput(rechargeAmount),
+        saleProfit: parseMoneyInput(amounts.saleProfit),
+        chillar: parseMoneyInput(amounts.chillar),
+        act: parseMoneyInput(amounts.act),
+        mnp: parseMoneyInput(amounts.mnp),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setOpen(false);
-      setAmount("");
-      setNote("");
+      setRechargeAmount("");
+      setAmounts(EMPTY_AMOUNTS);
     },
   });
 
@@ -283,7 +296,7 @@ export default function RechargePage() {
               }}
             >
               <option value="ALL">All Operators</option>
-              {OPERATORS.map((o) => (
+              {RECHARGE_OPERATORS.map((o) => (
                 <option key={o} value={o}>
                   {o}
                 </option>
@@ -299,9 +312,9 @@ export default function RechargePage() {
               }}
             >
               <option value="ALL">All Types</option>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {RECHARGE_AMOUNT_FIELDS.map((t) => (
+                <option key={t.entryType} value={t.entryType}>
+                  {t.label}
                 </option>
               ))}
             </select>
@@ -311,7 +324,14 @@ export default function RechargePage() {
             <button type="button" className="secondary" onClick={() => {}} title="Export (coming soon)">
               <Download size={16} /> Export
             </button>
-            <button type="button" onClick={() => setOpen(true)}>
+            <button
+              type="button"
+              onClick={() => {
+                setRechargeAmount("");
+                setAmounts(EMPTY_AMOUNTS);
+                setOpen(true);
+              }}
+            >
               + Create Recharge
             </button>
           </div>
@@ -342,7 +362,8 @@ export default function RechargePage() {
                 <th>Mobile Number</th>
                 <th>Operator</th>
                 <th>Type</th>
-                <th className="right">Amount</th>
+                <th className="right">Recharge</th>
+                <th className="right">Profit / Chillar</th>
                 <th>Status</th>
                 <th className="right">Action</th>
               </tr>
@@ -358,7 +379,7 @@ export default function RechargePage() {
                   </td>
                   <td>
                     <div className="recharge-mobile">
-                      {OPERATORS.includes(r.operator as OperatorKey) ? (
+                      {RECHARGE_OPERATORS.includes(r.operator as OperatorKey) ? (
                         <OperatorLogo operator={r.operator as OperatorKey} />
                       ) : (
                         <span
@@ -371,7 +392,10 @@ export default function RechargePage() {
                   </td>
                   <td>{r.operator}</td>
                   <td>
-                    <span className="badge recharge-type">{r.entryType}</span>
+                    <span className="badge recharge-type">{getRechargeEntryTypeLabel(r.entryType)}</span>
+                  </td>
+                  <td className="right">
+                    {r.rechargeAmount ? formatMoney(r.rechargeAmount) : "—"}
                   </td>
                   <td className="right">{formatMoney(r.amount)}</td>
                   <td>
@@ -454,22 +478,44 @@ export default function RechargePage() {
         >
           <label className="stat-label">Date</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+
           <label className="stat-label">Operator</label>
-          <select value={operator} onChange={(e) => setOperator(e.target.value as typeof operator)}>
-            {OPERATORS.map((o) => (
+          <select value={operator} onChange={(e) => setOperator(e.target.value as RechargeOperator)}>
+            {RECHARGE_OPERATORS.map((o) => (
               <option key={o} value={o}>{o}</option>
             ))}
           </select>
-          <label className="stat-label">Type</label>
-          <select value={entryType} onChange={(e) => setEntryType(e.target.value as typeof entryType)}>
-            {TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
+
+          <label className="stat-label">Recharge Amount (₹)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0.01"
+            placeholder="e.g. 249 or 299"
+            value={rechargeAmount}
+            onChange={(e) => setRechargeAmount(e.target.value)}
+            required
+          />
+
+          <div className="stat-label">Income (₹) — leave blank for 0</div>
+          <div className="recharge-amount-grid">
+            {RECHARGE_AMOUNT_FIELDS.map((field) => (
+              <label key={field.key} className="recharge-amount-field">
+                <span>{field.label}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={amounts[field.key]}
+                  onChange={(e) =>
+                    setAmounts((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                />
+              </label>
             ))}
-          </select>
-          <label className="stat-label">Amount</label>
-          <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-          <label className="stat-label">Note (optional)</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Plan / description" />
+          </div>
+
           {create.error && <p className="error">{(create.error as Error).message}</p>}
           <button type="submit" disabled={create.isPending}>
             {create.isPending ? "Saving…" : "Save"}

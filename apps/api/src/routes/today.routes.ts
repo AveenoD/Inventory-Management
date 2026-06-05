@@ -2,22 +2,33 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { d, fmt } from "../lib/decimal.js";
-import { getCurrentMonth } from "../services/month-resolver.js";
+import { resolveMonthForDate } from "../services/month-resolver.js";
+import { getDashboard } from "../services/dashboard.service.js";
 
 export const todayRouter = Router();
 todayRouter.use(requireAuth);
 
+function prevMonthYearMonth(year: number, month: number) {
+  if (month === 1) return { year: year - 1, month: 12 };
+  return { year, month: month - 1 };
+}
+
 todayRouter.get("/", async (req, res, next) => {
   try {
+    const userId = req.user!.userId;
     const dateStr =
       typeof req.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
         ? req.query.date
         : new Date().toISOString().slice(0, 10);
     const date = new Date(`${dateStr}T00:00:00.000Z`);
-    const month = await getCurrentMonth(req.user!.userId);
+    const month = await resolveMonthForDate(userId, date);
+    const dayOfMonth = date.getUTCDate();
+    const isFirstDayOfMonth = dayOfMonth === 1;
 
     const start7 = new Date(date);
     start7.setUTCDate(start7.getUTCDate() - 6);
+
+    const prev = prevMonthYearMonth(month.year, month.month);
 
     const [
       sales,
@@ -25,12 +36,18 @@ todayRouter.get("/", async (req, res, next) => {
       transferEntries,
       deliveredToday,
       pendingPickup,
+      undeliveredAll,
       activeRepairs,
       lowStockItems,
+      lowStockCount,
       salesAgg,
+      stockAgg,
+      productCount,
+      prevMonthRecord,
+      monthDashboard,
     ] = await Promise.all([
       prisma.sale.findMany({
-        where: { userId: req.user!.userId, date },
+        where: { userId, date },
         orderBy: { createdAt: "desc" },
       }),
       prisma.rechargeEntry.findMany({
@@ -58,6 +75,12 @@ todayRouter.get("/", async (req, res, next) => {
       }),
       prisma.repairJob.count({
         where: {
+          status: "REPAIRED_PENDING_PICKUP",
+          businessMonth: { userId },
+        },
+      }),
+      prisma.repairJob.count({
+        where: {
           businessMonthId: month.id,
           status: { in: ["RECEIVED", "IN_PROGRESS", "REPAIRED_PENDING_PICKUP"] },
         },
@@ -65,32 +88,48 @@ todayRouter.get("/", async (req, res, next) => {
       prisma.$queryRaw<Array<{ id: string; name: string; stockQty: number; minStock: number }>>`
         SELECT "id", "name", "stockQty", "minStock"
         FROM "Product"
-        WHERE "userId" = ${req.user!.userId}
+        WHERE "userId" = ${userId}
           AND "isActive" = true
           AND "stockQty" <= "minStock"
         ORDER BY ("stockQty" - "minStock") ASC, "name" ASC
         LIMIT 5
       `,
+      prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::bigint AS count
+        FROM "Product"
+        WHERE "userId" = ${userId}
+          AND "isActive" = true
+          AND "stockQty" <= "minStock"
+      `.then((rows) => Number(rows[0]?.count ?? 0)),
       prisma.sale.groupBy({
         by: ["date"],
-        where: { userId: req.user!.userId, date: { gte: start7, lte: date } },
+        where: { userId, date: { gte: start7, lte: date } },
         _sum: { total: true, totalCost: true },
       }),
+      prisma.$queryRaw<[{ value: string | null }]>`
+        SELECT COALESCE(SUM("buyPrice" * "stockQty"), 0)::text AS value
+        FROM "Product"
+        WHERE "userId" = ${userId} AND "isActive" = true
+      `,
+      prisma.product.count({ where: { userId, isActive: true } }),
+      prisma.businessMonth.findUnique({
+        where: {
+          userId_year_month: { userId, year: prev.year, month: prev.month },
+        },
+      }),
+      getDashboard(month.id),
     ]);
 
     const salesTotal = sales.reduce((a, s) => a.plus(d(s.total)), d(0));
     const salesProfit = sales.reduce((a, s) => a.plus(d(s.total).minus(d(s.totalCost))), d(0));
-    const rechargeTotal = rechargeEntries.reduce(
-      (a, e) => a.plus(d(e.amount)),
-      d(0),
-    );
-    const transferTotal = transferEntries.reduce(
-      (a, e) => a.plus(d(e.amount)),
-      d(0),
-    );
+    const rechargeTotal = rechargeEntries.reduce((a, e) => a.plus(d(e.amount)), d(0));
+    const transferTotal = transferEntries.reduce((a, e) => a.plus(d(e.amount)), d(0));
     const repairProfit = deliveredToday.reduce((a, j) => a.plus(d(j.profit)), d(0));
     const repairPendingBalance = pendingPickup.reduce((a, j) => a.plus(d(j.salePrice)), d(0));
-    const lowStockCount = lowStockItems.length;
+    const todayTotalProfit = salesProfit
+      .plus(rechargeTotal)
+      .plus(transferTotal)
+      .plus(repairProfit);
 
     const salesByDate = new Map(
       salesAgg.map((g) => [
@@ -142,9 +181,20 @@ todayRouter.get("/", async (req, res, next) => {
       .sort((a, b) => (a.at < b.at ? 1 : -1))
       .slice(0, 10);
 
+    let suggestedOpeningBalance: string | null = null;
+    if (isFirstDayOfMonth && prevMonthRecord) {
+      const prevDash = await getDashboard(prevMonthRecord.id);
+      suggestedOpeningBalance = prevDash.paymentSummary.cashPortalBalance;
+    }
+
+    const openingBalance = fmt(d(month.openingBalance));
+    const openingIsUnset = d(month.openingBalance).isZero();
+
     res.json({
       date: dateStr,
       monthId: month.id,
+      year: month.year,
+      month: month.month,
       salesTotal: fmt(salesTotal),
       salesProfit: fmt(salesProfit),
       salesCount: sales.length,
@@ -155,10 +205,24 @@ todayRouter.get("/", async (req, res, next) => {
       repairProfit: fmt(repairProfit),
       repairPendingCount: pendingPickup.length,
       repairPendingBalance: fmt(repairPendingBalance),
+      repairUndeliveredCount: undeliveredAll,
       lowStockCount,
       lowStockItems,
       salesLast7Days,
       recentActivity,
+      openingBalance,
+      remainingBalance: monthDashboard.paymentSummary.cashPortalBalance,
+      monthSalesTotal: monthDashboard.gross.mobileSale,
+      monthRechargeTotal: monthDashboard.gross.rechargeTotal,
+      monthRechargeTransferTotal: monthDashboard.serviceWise.rechargeTransferProfit,
+      monthRepairProfit: monthDashboard.serviceWise.repairProfit,
+      monthNetProfit: monthDashboard.netProfit,
+      todayTotalProfit: fmt(todayTotalProfit),
+      stockValue: fmt(d(stockAgg[0]?.value ?? 0)),
+      productCount,
+      isFirstDayOfMonth,
+      suggestedOpeningBalance,
+      showOpeningBalancePrompt: isFirstDayOfMonth && openingIsUnset,
     });
   } catch (e) {
     next(e);

@@ -1,6 +1,8 @@
 export type TodaySummary = {
   date: string;
   monthId: string;
+  year: number;
+  month: number;
   salesTotal: string;
   salesProfit: string;
   salesCount: number;
@@ -11,6 +13,8 @@ export type TodaySummary = {
   repairProfit: string;
   repairPendingCount: number;
   repairPendingBalance: string;
+  /** All repaired-but-not-delivered jobs (any date/month) */
+  repairUndeliveredCount: number;
   lowStockCount: number;
   lowStockItems: Array<{
     id: string;
@@ -30,4 +34,18 @@ export type TodaySummary = {
     subtitle?: string;
     amount?: string;
   }>;
+  /** Month-to-date business totals (Vyapar-style) */
+  openingBalance: string;
+  remainingBalance: string;
+  monthSalesTotal: string;
+  monthRechargeTotal: string;
+  monthRechargeTransferTotal: string;
+  monthRepairProfit: string;
+  monthNetProfit: string;
+  todayTotalProfit: string;
+  stockValue: string;
+  productCount: number;
+  isFirstDayOfMonth: boolean;
+  suggestedOpeningBalance: string | null;
+  showOpeningBalancePrompt: boolean;
 };

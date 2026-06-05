@@ -179,17 +179,18 @@ export default function ReportsPage() {
                         <stop offset="100%" stopColor="rgba(34,197,94,0.05)" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(45,58,79,0.55)" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: "#8b9cb3", fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#8b9cb3", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
                     <Tooltip
                       contentStyle={{
-                        background: "#101827",
-                        border: "1px solid #2d3a4f",
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
                         borderRadius: 10,
-                        color: "#e8eef7",
+                        color: "#0f172a",
+                        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
                       }}
-                      labelStyle={{ color: "#8b9cb3" }}
+                      labelStyle={{ color: "#64748b" }}
                       formatter={(value) => formatMoney(typeof value === "number" ? value : Number(value ?? 0))}
                     />
                     <Area type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} fill="url(#salesFill)" dot={false} />
@@ -220,7 +221,7 @@ export default function ReportsPage() {
                         innerRadius={70}
                         outerRadius={95}
                         paddingAngle={2}
-                        stroke="rgba(255,255,255,0.06)"
+                        stroke="#ffffff"
                       >
                         {breakdown.map((entry) => (
                           <Cell key={entry.name} fill={entry.color} />
@@ -228,10 +229,11 @@ export default function ReportsPage() {
                       </Pie>
                       <Tooltip
                         contentStyle={{
-                          background: "#101827",
-                          border: "1px solid #2d3a4f",
+                          background: "#ffffff",
+                          border: "1px solid #e2e8f0",
                           borderRadius: 10,
-                          color: "#e8eef7",
+                          color: "#0f172a",
+                          boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
                         }}
                         formatter={(value) => formatMoney(typeof value === "number" ? value : Number(value ?? 0))}
                       />

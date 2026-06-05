@@ -1,6 +1,6 @@
 import { Router } from "express";
 import {
-  rechargeEntrySchema,
+  rechargeBatchSchema,
   transferEntrySchema,
   repairIntakeSchema,
   repairJobSchema,
@@ -70,6 +70,7 @@ entriesRouter.get("/recharge-entries", async (req, res, next) => {
         operator: r.operator,
         entryType: r.entryType,
         amount: fmt(d(r.amount)),
+        rechargeAmount: r.rechargeAmount != null ? fmt(d(r.rechargeAmount)) : null,
         note: r.note,
       })),
       meta: { page: q.page, limit: q.limit, total, totalPages },
@@ -83,25 +84,63 @@ entriesRouter.post("/recharge-entries", async (req, res, next) => {
   try {
     await guard(req, req.user!.userId);
     const mid = monthIdFromParams(req.params);
-    const body = rechargeEntrySchema.parse(req.body);
+    const body = rechargeBatchSchema.parse(req.body);
     const date = parseDate(body.date);
-    const entry = await prisma.rechargeEntry.create({
-      data: {
-        businessMonthId: mid,
-        date,
-        operator: body.operator,
-        entryType: body.entryType,
-        amount: body.amount,
-        note: body.note,
-      },
-    });
+
+    const amounts: Array<{ entryType: "SALE_PROFIT" | "CHILLAR" | "ACT" | "MNP"; amount: number }> = [
+      { entryType: "SALE_PROFIT", amount: body.saleProfit },
+      { entryType: "CHILLAR", amount: body.chillar },
+      { entryType: "ACT", amount: body.act },
+      { entryType: "MNP", amount: body.mnp },
+    ];
+
+    if (body.rechargeAmount <= 0) {
+      res.status(400).json({ error: "Enter the actual recharge amount" });
+      return;
+    }
+
+    const toCreate = amounts.filter((a) => a.amount > 0);
+    const faceValue = fmt(d(body.rechargeAmount));
+
+    const created = await prisma.$transaction(
+      toCreate.map((item) =>
+        prisma.rechargeEntry.create({
+          data: {
+            businessMonthId: mid,
+            date,
+            operator: body.operator,
+            entryType: item.entryType,
+            amount: fmt(d(item.amount)),
+            rechargeAmount: faceValue,
+          },
+        }),
+      ),
+    );
+
+    // Store face value even when no profit lines were entered
+    if (created.length === 0) {
+      const entry = await prisma.rechargeEntry.create({
+        data: {
+          businessMonthId: mid,
+          date,
+          operator: body.operator,
+          entryType: "SALE_PROFIT",
+          amount: fmt(d(0)),
+          rechargeAmount: faceValue,
+        },
+      });
+      created.push(entry);
+    }
+
     await rollupRechargeDay(mid, date);
     res.status(201).json({
-      id: entry.id,
       date: body.date,
-      operator: entry.operator,
-      entryType: entry.entryType,
-      amount: fmt(d(entry.amount)),
+      operator: body.operator,
+      entries: created.map((entry) => ({
+        id: entry.id,
+        entryType: entry.entryType,
+        amount: fmt(d(entry.amount)),
+      })),
     });
   } catch (e) {
     next(e);
@@ -173,7 +212,7 @@ entriesRouter.post("/transfer-entries", async (req, res, next) => {
         businessMonthId: mid,
         date,
         serviceKey: body.serviceKey,
-        amount: body.amount,
+        amount: fmt(d(body.amount)),
         note: body.note,
       },
     });
@@ -245,10 +284,10 @@ entriesRouter.post("/repair-jobs/intake", async (req, res, next) => {
     const mid = monthIdFromParams(req.params);
     const body = repairIntakeSchema.parse(req.body);
     const date = parseDate(body.date);
-    const partsCost = body.repairCost;
-    const labourCost = 0;
-    const salePrice = body.customerCharge;
-    const profitVal = profit(salePrice, String(partsCost));
+    const partsCost = fmt(d(body.repairCost));
+    const labourCost = fmt(d(0));
+    const salePrice = fmt(d(body.customerCharge));
+    const profitVal = profit(salePrice, partsCost);
     const job = await prisma.repairJob.create({
       data: {
         businessMonthId: mid,
@@ -286,9 +325,9 @@ entriesRouter.post("/repair-jobs", async (req, res, next) => {
         status: "DELIVERED",
         customerName: body.customerName,
         device: body.device,
-        partsCost: body.partsCost,
-        labourCost: body.labourCost,
-        salePrice: body.salePrice,
+        partsCost: fmt(d(body.partsCost)),
+        labourCost: fmt(d(body.labourCost)),
+        salePrice: fmt(d(body.salePrice)),
         profit: profitVal,
         deliveredAt: date,
         note: body.note,

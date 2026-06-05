@@ -1,5 +1,5 @@
 import type { AuthResponse, LoginInput } from "./schemas/auth.js";
-import type { BusinessMonthDto, CreateMonthInput } from "./schemas/month.js";
+import type { BusinessMonthDto, CreateMonthInput, UpdateMonthInput } from "./schemas/month.js";
 import type { DashboardResponse } from "./schemas/dashboard.js";
 import type { PaginatedResponse } from "./schemas/pagination.js";
 import type { TodaySummary } from "./schemas/today.js";
@@ -10,7 +10,7 @@ import type {
   StockInInput,
 } from "./schemas/product.js";
 import type {
-  RechargeEntryInput,
+  RechargeBatchInput,
   TransferEntryInput,
   RepairJobInput,
   RepairIntakeInput,
@@ -30,7 +30,7 @@ export class ApiError extends Error {
   }
 }
 
-const REQUEST_TIMEOUT_MS = 8_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export function createApiClient(baseUrl: string, getToken?: () => string | null) {
   async function request<T>(
@@ -93,6 +93,11 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         body: JSON.stringify(data),
       }),
     getMonth: (id: string) => request<BusinessMonthDto>(`/api/v1/months/${id}`),
+    updateMonth: (id: string, data: UpdateMonthInput) =>
+      request<BusinessMonthDto>(`/api/v1/months/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     getDashboard: (monthId: string) =>
       request<DashboardResponse>(`/api/v1/months/${monthId}/dashboard`),
     bulkMoneyTransfer: (monthId: string, entries: unknown[]) =>
@@ -132,6 +137,14 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       request(`/api/v1/months/${monthId}/shop-expenses/bulk`, {
         method: "PUT",
         body: JSON.stringify({ entries }),
+      }),
+    createExpenseEntry: (
+      monthId: string,
+      body: { date: string; category: string; amount: number; description?: string },
+    ) =>
+      request(`/api/v1/months/${monthId}/expenses/entry`, {
+        method: "POST",
+        body: JSON.stringify(body),
       }),
     getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
@@ -190,6 +203,14 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "PUT",
         body: JSON.stringify({ entries }),
       }),
+    createWithdrawal: (monthId: string, body: { date: string; amount: number; description?: string }) =>
+      request<{ ok: boolean; amount: string; availableProfit: string }>(
+        `/api/v1/months/${monthId}/withdrawals`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
     getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) q.set("from", from);
@@ -294,7 +315,7 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         `/api/v1/months/${monthId}/recharge-entries?${q}`,
       );
     },
-    createRechargeEntry: (monthId: string, data: RechargeEntryInput) =>
+    createRechargeEntry: (monthId: string, data: RechargeBatchInput) =>
       request(`/api/v1/months/${monthId}/recharge-entries`, {
         method: "POST",
         body: JSON.stringify(data),

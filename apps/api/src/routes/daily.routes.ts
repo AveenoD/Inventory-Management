@@ -7,12 +7,15 @@ import {
   bulkExtraIncomeSchema,
   bulkShopExpenseSchema,
   bulkDamageSchema,
+  createExpenseEntrySchema,
   bulkPartySchema,
   bulkUdhharSchema,
   bulkBankSchema,
   bulkWithdrawalSchema,
+  createWithdrawalSchema,
   paginationQuerySchema,
 } from "@sk-mobile/shared";
+import { getDashboard } from "../services/dashboard.service.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { assertMonthAccess } from "../services/month-access.js";
@@ -315,6 +318,119 @@ dailyRouter.put("/shop-expenses/bulk", async (req, res, next) => {
   }
 });
 
+function mergeDescription(existing: string | null | undefined, next?: string) {
+  const a = (existing ?? "").trim();
+  const b = (next ?? "").trim();
+  if (!b) return a || null;
+  if (!a) return b;
+  return `${a} · ${b}`;
+}
+
+dailyRouter.post("/expenses/entry", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const body = createExpenseEntrySchema.parse(req.body);
+    const day = parseDate(body.date);
+    const amount = d(body.amount);
+
+    if (body.category === "ACCESSORIES_DAMAGE" || body.category === "REPAIRING_DAMAGE") {
+      const existing = await prisma.damageDay.findUnique({
+        where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+      });
+
+      const accessoriesAmount =
+        body.category === "ACCESSORIES_DAMAGE"
+          ? d(existing?.accessoriesAmount ?? 0).plus(amount)
+          : d(existing?.accessoriesAmount ?? 0);
+      const repairingAmount =
+        body.category === "REPAIRING_DAMAGE"
+          ? d(existing?.repairingAmount ?? 0).plus(amount)
+          : d(existing?.repairingAmount ?? 0);
+      const accessoriesDescription =
+        body.category === "ACCESSORIES_DAMAGE"
+          ? mergeDescription(existing?.accessoriesDescription, body.description)
+          : existing?.accessoriesDescription ?? null;
+      const repairingDescription =
+        body.category === "REPAIRING_DAMAGE"
+          ? mergeDescription(existing?.repairingDescription, body.description)
+          : existing?.repairingDescription ?? null;
+
+      const row = await prisma.damageDay.upsert({
+        where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+        create: {
+          businessMonthId: mid,
+          date: day,
+          accessoriesDescription,
+          accessoriesAmount,
+          repairingDescription,
+          repairingAmount,
+          amount: fmt(accessoriesAmount.plus(repairingAmount)),
+        },
+        update: {
+          accessoriesDescription,
+          accessoriesAmount,
+          repairingDescription,
+          repairingAmount,
+          amount: fmt(accessoriesAmount.plus(repairingAmount)),
+        },
+      });
+      res.status(201).json({ ok: true, data: serializeRow(row) });
+      return;
+    }
+
+    const existing = await prisma.shopExpenseDay.findUnique({
+      where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+    });
+
+    let salaryAmount = d(existing?.salaryAmount ?? 0);
+    let teaAmount = d(existing?.teaAmount ?? 0);
+    let shopExpAmount = d(existing?.shopExpAmount ?? 0);
+    let salaryDescription = existing?.salaryDescription ?? null;
+    let teaDescription = existing?.teaDescription ?? null;
+    let shopExpDescription = existing?.shopExpDescription ?? null;
+
+    if (body.category === "SALARY") {
+      salaryAmount = salaryAmount.plus(amount);
+      salaryDescription = mergeDescription(salaryDescription, body.description);
+    } else if (body.category === "TEA") {
+      teaAmount = teaAmount.plus(amount);
+      teaDescription = mergeDescription(teaDescription, body.description);
+    } else {
+      shopExpAmount = shopExpAmount.plus(amount);
+      shopExpDescription = mergeDescription(shopExpDescription, body.description);
+    }
+
+    const total = fmt(salaryAmount.plus(teaAmount).plus(shopExpAmount));
+    const row = await prisma.shopExpenseDay.upsert({
+      where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+      create: {
+        businessMonthId: mid,
+        date: day,
+        salaryDescription,
+        salaryAmount,
+        teaDescription,
+        teaAmount,
+        shopExpDescription,
+        shopExpAmount,
+        total,
+      },
+      update: {
+        salaryDescription,
+        salaryAmount,
+        teaDescription,
+        teaAmount,
+        shopExpDescription,
+        shopExpAmount,
+        total,
+      },
+    });
+    res.status(201).json({ ok: true, data: serializeRow(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Damage
 dailyRouter.get("/damages", async (req, res, next) => {
   try {
@@ -548,6 +664,62 @@ dailyRouter.get("/withdrawals", async (req, res, next) => {
       data: rows.map(serializeRow),
       meta: { page: q.page, limit: q.limit, total, totalPages },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+dailyRouter.post("/withdrawals", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const body = createWithdrawalSchema.parse(req.body);
+    const amount = d(body.amount);
+    const dash = await getDashboard(mid);
+    const availableProfit = d(dash.netProfit);
+    if (availableProfit.lte(0)) {
+      res.status(400).json({
+        error: "No profit available to withdraw this month.",
+      });
+      return;
+    }
+    if (amount.gt(availableProfit)) {
+      res.status(400).json({
+        error: `Insufficient profit. Available: ${fmt(availableProfit)}. You cannot withdraw more than the current month profit.`,
+      });
+      return;
+    }
+
+    const date = parseDate(body.date);
+    const existing = await prisma.withdrawal.findFirst({
+      where: { businessMonthId: mid, date },
+    });
+
+    if (existing) {
+      const newCash = d(existing.cash).plus(amount);
+      const newTotal = d(existing.total).plus(amount);
+      await prisma.withdrawal.update({
+        where: { id: existing.id },
+        data: {
+          cash: newCash,
+          total: newTotal,
+          description: body.description?.trim() || existing.description || "Withdrawal",
+        },
+      });
+    } else {
+      await prisma.withdrawal.create({
+        data: {
+          businessMonthId: mid,
+          date,
+          description: body.description?.trim() || "Withdrawal",
+          cash: amount,
+          bank: 0,
+          total: amount,
+        },
+      });
+    }
+
+    res.status(201).json({ ok: true, amount: fmt(amount), availableProfit: fmt(availableProfit.minus(amount)) });
   } catch (e) {
     next(e);
   }

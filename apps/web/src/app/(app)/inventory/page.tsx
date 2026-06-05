@@ -37,7 +37,7 @@ export default function InventoryPage() {
   const products = data?.data ?? [];
 
   return (
-    <div>
+    <div className="inventory-page">
       <PageHeader
         title="Inventory"
         subtitle="Mobile, accessories, repair parts, audio & chargers"

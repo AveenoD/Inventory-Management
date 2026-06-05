@@ -16,7 +16,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { StatCard } from "@/components/ui/stat-card";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 
 type Tab = "all" | "active" | "pending" | "delivered" | "unrepairable";
 
@@ -84,7 +84,7 @@ export default function RepairPage() {
   const pendingSummary = useMemo(() => {
     const pending = pendingData?.data ?? [];
     const balance = pending.reduce(
-      (s, j) => s + parseFloat(j.customerCharge || j.salePrice || "0"),
+      (s, j) => s + parseMoneyInput(j.customerCharge || j.salePrice || "0"),
       0,
     );
     return { count: pending.length, balance };
@@ -104,8 +104,8 @@ export default function RepairPage() {
         customerPhone: customerPhone || undefined,
         device,
         issueDescription,
-        repairCost: parseFloat(intakeRepairCost) || 0,
-        customerCharge: parseFloat(intakeCustomerCharge) || 0,
+        repairCost: parseMoneyInput(intakeRepairCost),
+        customerCharge: parseMoneyInput(intakeCustomerCharge),
       }),
     onSuccess: () => {
       invalidate();
@@ -395,8 +395,8 @@ export default function RepairPage() {
                 updateStatus.mutate({
                   jobId: actionJob.id,
                   status: "REPAIRED_PENDING_PICKUP",
-                  repairCost: parseFloat(repairCost) || 0,
-                  customerCharge: parseFloat(customerCharge) || 0,
+                  repairCost: parseMoneyInput(repairCost),
+                  customerCharge: parseMoneyInput(customerCharge),
                 });
               }}
             >

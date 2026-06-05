@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { roundMoney } from "../lib/money.js";
 
-const moneyField = z.coerce.number().min(0).default(0);
+const moneyField = z.coerce.number().min(0).transform(roundMoney).default(0);
 
 export const moneyTransferDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

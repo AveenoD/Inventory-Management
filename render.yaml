@@ -12,7 +12,8 @@ services:
       NPM_CONFIG_PRODUCTION=false npm ci &&
       npm run build --workspace=@sk-mobile/shared &&
       npm run db:generate --workspace=@sk-mobile/api &&
-      npm run build --workspace=@sk-mobile/api
+      npm run build --workspace=@sk-mobile/api &&
+      npm run db:migrate --workspace=@sk-mobile/api
     startCommand: npm run start:prod --workspace=@sk-mobile/api
     envVars:
       - key: NODE_VERSION
@@ -29,3 +30,7 @@ services:
         value: "https://sk-inventory.netlify.app"
       - key: PORT
         value: "10000"
+  - type: cron
+    name: sk-mobile-api-keepalive
+    schedule: "*/14 * * * *"
+    command: curl -fsS "https://sk-mobile-api.onrender.com/health" || true

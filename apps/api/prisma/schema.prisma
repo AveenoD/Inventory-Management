@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum StockMovementType {
@@ -361,6 +362,7 @@ model RechargeEntry {
   operator        String
   entryType       String
   amount          Decimal       @db.Decimal(14, 2)
+  rechargeAmount  Decimal?      @db.Decimal(14, 2)
   note            String?
   createdAt       DateTime      @default(now())
 

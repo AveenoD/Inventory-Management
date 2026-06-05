@@ -1,6 +1,21 @@
 import { z } from "zod";
-
+import { roundMoney } from "../lib/money.js";
 const money = z.coerce.number().min(0).default(0);
+
+export const expenseCategorySchema = z.enum([
+  "SALARY",
+  "TEA",
+  "SHOP",
+  "ACCESSORIES_DAMAGE",
+  "REPAIRING_DAMAGE",
+]);
+
+export const createExpenseEntrySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: expenseCategorySchema,
+  amount: z.coerce.number().positive().transform(roundMoney),
+  description: z.string().optional(),
+});
 
 export const shopExpenseDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

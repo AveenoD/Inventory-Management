@@ -68,6 +68,8 @@ export const api = {
   createMonth: (data: Parameters<typeof client.createMonth>[0]) =>
     withAuth(() => client.createMonth(data)),
   getMonth: (id: string) => withAuth(() => client.getMonth(id)),
+  updateMonth: (id: string, data: Parameters<typeof client.updateMonth>[1]) =>
+    withAuth(() => client.updateMonth(id, data)),
   getDashboard: (monthId: string) => withAuth(() => client.getDashboard(monthId)),
   getToday: (date?: string) => withAuth(() => client.getToday(date)),
   getProducts: (
@@ -157,6 +159,16 @@ export const api = {
     withAuth(() => client.bulkExtraIncome(monthId, entries)),
   bulkShopExpense: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkShopExpense(monthId, entries)),
+  createExpenseEntry: (
+    monthId: string,
+    body: { date: string; category: string; amount: number; description?: string },
+  ) =>
+    withAuth(() =>
+      requestJson(`/api/v1/months/${monthId}/expenses/entry`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    ),
   getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
     withAuth(() => client.getShopExpenses(monthId, page, limit, from, to)),
   bulkDamage: (monthId: string, entries: unknown[]) =>
@@ -187,6 +199,16 @@ export const api = {
   },
   bulkWithdrawal: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkWithdrawal(monthId, entries)),
+  createWithdrawal: (monthId: string, body: { date: string; amount: number; description?: string }) =>
+    withAuth(() =>
+      requestJson<{ ok: boolean; amount: string; availableProfit: string }>(
+        `/api/v1/months/${monthId}/withdrawals`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      ),
+    ),
   getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
     withAuth(() => client.getWithdrawals(monthId, page, limit, from, to)),
   getParties: (monthId: string, page?: number, search?: string) =>

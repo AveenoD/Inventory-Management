@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { TRANSFER_SERVICES } from "@sk-mobile/shared";
+import {
+  TRANSFER_CATEGORIES,
+  TRANSFER_SERVICES,
+  getTransferLabel,
+  getCategoryForKey,
+  getSubServicesForCategory,
+  type TransferCategoryId,
+} from "@sk-mobile/shared";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
 import { MonthGate } from "@/components/month-gate";
@@ -10,7 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 import { Calendar, Download, MoreVertical, Search } from "lucide-react";
 
 type TransferRow = {
@@ -22,6 +29,7 @@ type TransferRow = {
 };
 
 const PAGE_SIZES = [10, 25, 50] as const;
+const DEFAULT_CATEGORY: TransferCategoryId = "dmt99";
 
 export default function MoneyTransferPage() {
   const { monthId } = useMonthContext();
@@ -29,14 +37,17 @@ export default function MoneyTransferPage() {
   const [open, setOpen] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
-  const [serviceKey, setServiceKey] = useState<string>(TRANSFER_SERVICES[0].key);
+  const [categoryId, setCategoryId] = useState<TransferCategoryId>(DEFAULT_CATEGORY);
+  const [serviceKey, setServiceKey] = useState<string>(
+    getSubServicesForCategory(DEFAULT_CATEGORY)[0].key,
+  );
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
   const [dateFilter, setDateFilter] = useState<string | "">("");
-  const [serviceFilter, setServiceFilter] = useState<string>("ALL");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [subFilter, setSubFilter] = useState<string>("ALL");
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
 
@@ -44,6 +55,25 @@ export default function MoneyTransferPage() {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
   }, [search]);
+
+  const subServices = getSubServicesForCategory(categoryId);
+  const filterSubServices =
+    categoryFilter === "ALL"
+      ? TRANSFER_SERVICES
+      : getSubServicesForCategory(categoryFilter as TransferCategoryId).map((sub) => {
+          const cat = TRANSFER_CATEGORIES.find((c) => c.id === categoryFilter)!;
+          return { key: sub.key, label: `${cat.label} — ${sub.label}` };
+        });
+
+  function handleCategoryChange(nextCategory: TransferCategoryId) {
+    setCategoryId(nextCategory);
+    const subs = getSubServicesForCategory(nextCategory);
+    setServiceKey(subs[0]?.key ?? serviceKey);
+  }
+
+  function handleSubServiceChange(nextKey: string) {
+    setServiceKey(nextKey);
+  }
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["transfer-entries", monthId, page, dateFilter],
@@ -55,7 +85,6 @@ export default function MoneyTransferPage() {
 
   const entries = (data?.data ?? []) as TransferRow[];
   const meta = data?.meta;
-  const totalPages = meta?.totalPages ?? 1;
   const totalTx = meta?.total ?? entries.length;
 
   const create = useMutation({
@@ -63,15 +92,13 @@ export default function MoneyTransferPage() {
       api.createTransferEntry(monthId!, {
         date,
         serviceKey,
-        amount: parseFloat(amount) || 0,
-        note: note.trim() ? note.trim() : undefined,
+        amount: parseMoneyInput(amount),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setOpen(false);
       setAmount("");
-      setNote("");
     },
   });
 
@@ -79,25 +106,25 @@ export default function MoneyTransferPage() {
     mutationFn: (entryId: string) => api.deleteTransferEntry(monthId!, entryId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
+      qc.invalidateQueries({ queryKey: ["today"] });
     },
   });
 
-  const serviceLabel = (key: string) =>
-    TRANSFER_SERVICES.find((s) => s.key === key)?.label ?? key;
-
   const filteredEntries = useMemo(() => {
     return entries.filter((e) => {
-      if (serviceFilter !== "ALL" && e.serviceKey !== serviceFilter) return false;
+      const entryCategory = getCategoryForKey(e.serviceKey);
+      if (categoryFilter !== "ALL" && entryCategory !== categoryFilter) return false;
+      if (subFilter !== "ALL" && e.serviceKey !== subFilter) return false;
       if (!searchDebounced) return true;
-      const hay = `${e.serviceKey} ${serviceLabel(e.serviceKey)} ${e.amount} ${e.date} ${e.note ?? ""}`.toLowerCase();
+      const hay = `${e.serviceKey} ${getTransferLabel(e.serviceKey)} ${e.amount} ${e.date}`.toLowerCase();
       return hay.includes(searchDebounced);
     });
-  }, [entries, serviceFilter, searchDebounced]);
+  }, [entries, categoryFilter, subFilter, searchDebounced]);
 
-  const pageTotal = filteredEntries.reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
-  const todayTotal = filteredEntries
-    .filter((r) => r.date === today)
-    .reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
+  const pageTotal = sumMoney(filteredEntries.map((r) => r.amount));
+  const todayTotal = sumMoney(
+    filteredEntries.filter((r) => r.date === today).map((r) => r.amount),
+  );
 
   const localTotalPages = Math.max(1, Math.ceil(filteredEntries.length / pageSize));
   const safePage = Math.min(page, localTotalPages);
@@ -106,12 +133,18 @@ export default function MoneyTransferPage() {
   const showingFrom = Math.min((safePage - 1) * pageSize + 1, filteredEntries.length || 0);
   const showingTo = Math.min(safePage * pageSize, filteredEntries.length || 0);
 
+  function openAddModal() {
+    setCategoryId(DEFAULT_CATEGORY);
+    setServiceKey(getSubServicesForCategory(DEFAULT_CATEGORY)[0].key);
+    setOpen(true);
+  }
+
   return (
     <MonthGate>
     <div>
       <PageHeader
         title="Money Transfer"
-        subtitle="DMT, AEPS, and other transfer services"
+        subtitle="DMT 99, DMT 86, and IME transfer services"
         action={
           <div className="transfer-top-actions">
             <div className="transfer-search">
@@ -125,7 +158,7 @@ export default function MoneyTransferPage() {
                 }}
               />
             </div>
-            <button type="button" onClick={() => setOpen(true)}>
+            <button type="button" onClick={openAddModal}>
               + Add Transfer
             </button>
           </div>
@@ -135,48 +168,20 @@ export default function MoneyTransferPage() {
       {!isLoading && !error && (
         <div className="transfer-stats">
           <div className="transfer-stat card blue">
-            <div className="transfer-stat-icon blue" aria-hidden="true">
-              ⇄
-            </div>
+            <div className="transfer-stat-icon blue" aria-hidden="true">⇄</div>
             <div className="transfer-stat-body">
-              <div className="stat-label">Today’s Transfer</div>
-              <div className="stat-value">{formatMoney(String(todayTotal))}</div>
+              <div className="stat-label">Today&apos;s Transfer</div>
+              <div className="stat-value">{formatMoney(todayTotal)}</div>
               <div className="muted">{filteredEntries.filter((r) => r.date === today).length} Transaction</div>
             </div>
           </div>
 
           <div className="transfer-stat card green">
-            <div className="transfer-stat-icon green" aria-hidden="true">
-              ↗
-            </div>
+            <div className="transfer-stat-icon green" aria-hidden="true">↗</div>
             <div className="transfer-stat-body">
-              <div className="stat-label">This Month</div>
-              <div className="stat-value">{formatMoney(String(pageTotal))}</div>
+              <div className="stat-label">Filtered Total</div>
+              <div className="stat-value">{formatMoney(pageTotal)}</div>
               <div className="muted">{totalTx} Transaction</div>
-            </div>
-          </div>
-
-          <div className="transfer-stat card purple">
-            <div className="transfer-stat-icon purple" aria-hidden="true">
-              ▣
-            </div>
-            <div className="transfer-stat-body">
-              <div className="stat-label">Last Month</div>
-              <div className="stat-value">₹0.00</div>
-              <div className="muted">0 Transaction</div>
-            </div>
-          </div>
-
-          <div className="transfer-stat card amber">
-            <div className="transfer-stat-icon amber" aria-hidden="true">
-              ◷
-            </div>
-            <div className="transfer-stat-body">
-              <div className="stat-label">Total Balance</div>
-              <div className="stat-value">₹5,200.00</div>
-              <div className="muted">
-                Opening Balance: <span className="transfer-opening">₹2,000.00</span>
-              </div>
             </div>
           </div>
         </div>
@@ -194,7 +199,7 @@ export default function MoneyTransferPage() {
           title="No transfer entries yet"
           description="Add DMT, AEPS, or other money transfer records for this month."
           action={
-            <button type="button" onClick={() => setOpen(true)}>
+            <button type="button" onClick={openAddModal}>
               Add transfer
             </button>
           }
@@ -233,17 +238,30 @@ export default function MoneyTransferPage() {
 
               <select
                 className="transfer-select"
-                value={serviceFilter}
+                value={categoryFilter}
                 onChange={(e) => {
-                  setServiceFilter(e.target.value);
+                  setCategoryFilter(e.target.value);
+                  setSubFilter("ALL");
                   setPage(1);
                 }}
               >
                 <option value="ALL">All Services</option>
-                {TRANSFER_SERVICES.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
+                {TRANSFER_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </select>
+
+              <select
+                className="transfer-select"
+                value={subFilter}
+                onChange={(e) => {
+                  setSubFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="ALL">All Sub-types</option>
+                {filterSubServices.map((s) => (
+                  <option key={s.key} value={s.key}>{s.label}</option>
                 ))}
               </select>
             </div>
@@ -259,50 +277,40 @@ export default function MoneyTransferPage() {
             <table className="data-list transfer-table">
               <thead>
                 <tr>
-                  <th>Date &amp; Time</th>
+                  <th>Date</th>
                   <th>Service</th>
-                  <th>Reference / Description</th>
+                  <th>Sub-type</th>
                   <th className="right">Amount (₹)</th>
-                  <th>Status</th>
                   <th className="right">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {paged.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <div className="transfer-datecell">
-                        <div className="transfer-datecell-date">{r.date}</div>
-                        <div className="transfer-datecell-time muted">10:30 AM</div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="transfer-service">
-                        <span className="transfer-service-name">{serviceLabel(r.serviceKey)}</span>
-                        <span className="transfer-service-sub muted">{r.serviceKey}</span>
-                      </div>
-                    </td>
-                    <td className="muted">{r.note ? r.note : serviceLabel(r.serviceKey)}</td>
-                    <td className="right">{formatMoney(r.amount)}</td>
-                    <td>
-                      <span className="transfer-status">
-                        <span className="transfer-status-dot" aria-hidden="true" />
-                        <span className="ok">Success</span>
-                      </span>
-                    </td>
-                    <td className="right">
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        title="Delete"
-                        disabled={del.isPending}
-                        onClick={() => del.mutate(r.id)}
-                      >
-                        <MoreVertical size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {paged.map((r) => {
+                  const catId = getCategoryForKey(r.serviceKey);
+                  const catLabel = TRANSFER_CATEGORIES.find((c) => c.id === catId)?.label ?? "—";
+                  const subLabel =
+                    TRANSFER_SERVICES.find((s) => s.key === r.serviceKey)?.subLabel ??
+                    getTransferLabel(r.serviceKey);
+                  return (
+                    <tr key={r.id}>
+                      <td>{r.date}</td>
+                      <td><span className="transfer-service-name">{catLabel}</span></td>
+                      <td className="muted">{subLabel}</td>
+                      <td className="right">{formatMoney(r.amount)}</td>
+                      <td className="right">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          title="Delete"
+                          disabled={del.isPending}
+                          onClick={() => del.mutate(r.id)}
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -342,9 +350,7 @@ export default function MoneyTransferPage() {
                 }}
               >
                 {PAGE_SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {s} / page
-                  </option>
+                  <option key={s} value={s}>{s} / page</option>
                 ))}
               </select>
             </div>
@@ -362,16 +368,34 @@ export default function MoneyTransferPage() {
         >
           <label className="stat-label">Date</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+
           <label className="stat-label">Service</label>
-          <select value={serviceKey} onChange={(e) => setServiceKey(e.target.value)}>
-            {TRANSFER_SERVICES.map((s) => (
+          <select
+            value={categoryId}
+            onChange={(e) => handleCategoryChange(e.target.value as TransferCategoryId)}
+          >
+            {TRANSFER_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
+          </select>
+
+          <label className="stat-label">Sub-type</label>
+          <select value={serviceKey} onChange={(e) => handleSubServiceChange(e.target.value)}>
+            {subServices.map((s) => (
               <option key={s.key} value={s.key}>{s.label}</option>
             ))}
           </select>
-          <label className="stat-label">Amount</label>
-          <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-          <label className="stat-label">Reference / Description (optional)</label>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="DMT99 DMT" />
+
+          <label className="stat-label">Amount (₹)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            required
+          />
+
           {create.error && <p className="error">{(create.error as Error).message}</p>}
           <button type="submit" disabled={create.isPending}>
             {create.isPending ? "Saving…" : "Save"}

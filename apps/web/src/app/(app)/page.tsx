@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
   Area,
@@ -16,28 +16,70 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   ArrowLeftRight,
+  Banknote,
   Bell,
   CircleDollarSign,
   Package,
+  Pencil,
   Search,
+  Smartphone,
   TrendingUp,
+  Wallet,
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, parseMoneyInput } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
+import { FormModal } from "@/components/ui/form-modal";
+
+function openingDismissKey(year: number, month: number) {
+  return `sk-opening-dismissed-${year}-${month}`;
+}
 
 export default function TodayPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [search, setSearch] = useState("");
+  const [editOpeningOpen, setEditOpeningOpen] = useState(false);
+  const [openingInput, setOpeningInput] = useState("");
+  const [day1PromptOpen, setDay1PromptOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["today", date],
     queryFn: () => api.getToday(date),
     enabled: !!getToken(),
-    retry: false,
+    retry: 1,
   });
+
+  const updateOpening = useMutation({
+    mutationFn: (amount: number) => {
+      if (!data?.monthId) throw new Error("Month not loaded");
+      return api.updateMonth(data.monthId, { openingBalance: amount });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["today"] });
+      setEditOpeningOpen(false);
+      setDay1PromptOpen(false);
+      if (data) {
+        localStorage.setItem(openingDismissKey(data.year, data.month), "1");
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    if (!data.isFirstDayOfMonth) {
+      setDay1PromptOpen(false);
+      return;
+    }
+    const dismissed = localStorage.getItem(openingDismissKey(data.year, data.month));
+    if (dismissed) return;
+    if (data.showOpeningBalancePrompt || data.openingBalance === "0.00") {
+      setOpeningInput(data.suggestedOpeningBalance ?? data.openingBalance);
+      setDay1PromptOpen(true);
+    }
+  }, [data]);
 
   const chartData = useMemo(
     () =>
@@ -51,7 +93,7 @@ export default function TodayPage() {
 
   const showLoader = isLoading || (isFetching && !data);
 
-  if (showLoader) return <PageLoader message="Loading today…" />;
+  if (showLoader) return <PageLoader message="Loading dashboard…" />;
   if (error) {
     const msg = (error as Error).message;
     const timedOut = msg.toLowerCase().includes("timed out");
@@ -61,8 +103,7 @@ export default function TodayPage() {
         <p className="error">{msg}</p>
         {timedOut && (
           <p className="muted">
-            The API or database is slow or unreachable. Confirm Supabase is online and{" "}
-            <code>npm run dev:api</code> is running on port 4000.
+            API may be waking up (Render free tier). Wait a moment and retry.
           </p>
         )}
         <button type="button" onClick={() => refetch()}>Retry</button>
@@ -71,12 +112,103 @@ export default function TodayPage() {
   }
   if (!data) return null;
 
+  const monthLabel = new Date(data.year, data.month - 1).toLocaleString("en-IN", {
+    month: "long",
+    year: "numeric",
+  });
+
+  function openEditOpening() {
+    setOpeningInput(data!.openingBalance);
+    setEditOpeningOpen(true);
+  }
+
+  function saveOpeningBalance() {
+    const amount = parseMoneyInput(openingInput);
+    if (!Number.isFinite(amount) || amount < 0) return;
+    updateOpening.mutate(amount);
+  }
+
+  function dismissDay1Prompt() {
+    localStorage.setItem(openingDismissKey(data.year, data.month), "1");
+    setDay1PromptOpen(false);
+  }
+
   return (
     <div className="dash">
+      <FormModal
+        open={editOpeningOpen}
+        title="Edit Opening Balance"
+        onClose={() => setEditOpeningOpen(false)}
+      >
+        <p className="muted" style={{ marginBottom: "0.75rem" }}>
+          Opening balance for {monthLabel}. This affects cash balance and net profit.
+        </p>
+        <label>
+          Amount (₹)
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={openingInput}
+            onChange={(e) => setOpeningInput(e.target.value)}
+          />
+        </label>
+        {updateOpening.error && (
+          <p className="error">{(updateOpening.error as Error).message}</p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="secondary" onClick={() => setEditOpeningOpen(false)}>
+            Cancel
+          </button>
+          <button type="button" onClick={saveOpeningBalance} disabled={updateOpening.isPending}>
+            {updateOpening.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </FormModal>
+
+      <FormModal
+        open={day1PromptOpen}
+        title="Set Opening Balance"
+        onClose={dismissDay1Prompt}
+      >
+        <p className="muted" style={{ marginBottom: "0.75rem" }}>
+          New month started ({monthLabel}). Set your opening cash balance.
+        </p>
+        {data.suggestedOpeningBalance && (
+          <p className="dash-hint">
+            Previous month closing balance:{" "}
+            <strong>{formatMoney(data.suggestedOpeningBalance)}</strong>
+          </p>
+        )}
+        <label>
+          Opening Balance (₹)
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={openingInput}
+            onChange={(e) => setOpeningInput(e.target.value)}
+          />
+        </label>
+        {updateOpening.error && (
+          <p className="error">{(updateOpening.error as Error).message}</p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="secondary" onClick={dismissDay1Prompt}>
+            Later
+          </button>
+          <button type="button" onClick={saveOpeningBalance} disabled={updateOpening.isPending}>
+            {updateOpening.isPending ? "Saving…" : "Set Balance"}
+          </button>
+        </div>
+      </FormModal>
+
       <div className="dash-topbar">
         <div>
           <div className="dash-title">Dashboard</div>
-          <div className="dash-subtitle">Welcome back! Here's what's happening in your shop today.</div>
+          <div className="dash-subtitle">
+            {monthLabel}
+          </div>
         </div>
 
         <div className="dash-topbar-right">
@@ -99,7 +231,69 @@ export default function TodayPage() {
         </div>
       </div>
 
-      <div className="dash-metrics">
+      <div className="dash-section-label">This Month</div>
+      <div className="dash-metrics dash-metrics-6">
+        <MetricCard
+          icon={<CircleDollarSign size={18} />}
+          label="Total Sales"
+          value={formatMoney(data.monthSalesTotal)}
+          sub="Mobile & accessories"
+          tone="blue"
+        />
+        <MetricCard
+          icon={<Smartphone size={18} />}
+          label="Recharge + Transfer"
+          value={formatMoney(data.monthRechargeTransferTotal)}
+          sub="Month recharge & money transfer"
+          tone="green"
+        />
+        <MetricCard
+          icon={<Wrench size={18} />}
+          label="Repair Profit"
+          value={formatMoney(data.monthRepairProfit)}
+          sub="Delivered repairs"
+          subExtra={
+            data.repairPendingCount > 0
+              ? `Undelivered: ${formatMoney(data.repairPendingBalance)} (${data.repairPendingCount})`
+              : "No undelivered repairs"
+          }
+          tone="orange"
+        />
+        <MetricCard
+          icon={<Package size={18} />}
+          label="Stock Value"
+          value={formatMoney(data.stockValue)}
+          tone="purple"
+        />
+        <MetricCard
+          icon={<Wallet size={18} />}
+          label="Opening Balance"
+          value={formatMoney(data.openingBalance)}
+          sub="Tap edit to change"
+          tone="teal"
+          action={
+            <button
+              type="button"
+              className="dash-metric-edit"
+              onClick={openEditOpening}
+              aria-label="Edit opening balance"
+            >
+              <Pencil size={12} />
+              Edit
+            </button>
+          }
+        />
+        <MetricCard
+          icon={<Banknote size={18} />}
+          label="Month Total Profit"
+          value={formatMoney(data.monthNetProfit)}
+          sub="All income minus expenses"
+          tone="blue"
+        />
+      </div>
+
+      <div className="dash-section-label">Today — {data.date}</div>
+      <div className="dash-metrics dash-metrics-6">
         <MetricCard
           icon={<CircleDollarSign size={18} />}
           label="Today's Sales"
@@ -111,29 +305,36 @@ export default function TodayPage() {
           icon={<TrendingUp size={18} />}
           label="Today's Profit"
           value={formatMoney(data.salesProfit)}
-          sub="Sales Profit"
+          sub="Sales profit"
           tone="green"
         />
         <MetricCard
           icon={<Wrench size={18} />}
-          label="Active Repairs"
-          value={data.activeRepairs}
-          sub={`${data.repairPendingCount} pending pickup`}
+          label="Today's Repair Profit"
+          value={formatMoney(data.repairProfit)}
+          sub={`${data.repairDelivered} delivered · ${data.repairUndeliveredCount} undelivered`}
           tone="orange"
         />
         <MetricCard
-          icon={<ArrowLeftRight size={18} />}
-          label="Service Income"
-          value={formatMoney((Number(data.rechargeTotal) || 0) + (Number(data.transferTotal) || 0))}
-          sub="Recharge + Transfer"
+          icon={<Smartphone size={18} />}
+          label="Today's Recharge"
+          value={formatMoney(data.rechargeTotal)}
+          sub="Recharge income"
           tone="purple"
         />
         <MetricCard
-          icon={<Package size={18} />}
-          label="Low Stock Items"
-          value={data.lowStockCount}
-          sub={data.lowStockCount > 0 ? "Needs attention" : "All good"}
-          tone={data.lowStockCount > 0 ? "red" : "blue"}
+          icon={<ArrowLeftRight size={18} />}
+          label="Today's Transfer"
+          value={formatMoney(data.transferTotal)}
+          sub="Money transfer income"
+          tone="teal"
+        />
+        <MetricCard
+          icon={<TrendingUp size={18} />}
+          label="Total Profit Today"
+          value={formatMoney(data.todayTotalProfit)}
+          sub="Sales + recharge + transfer + repair"
+          tone="purple"
         />
       </div>
 
@@ -156,7 +357,7 @@ export default function TodayPage() {
 
         <div className="dash-card dash-activity">
           <div className="dash-card-header">
-            <div className="dash-card-title">Today's Activity</div>
+            <div className="dash-card-title">Today&apos;s Activity</div>
             <Link className="dash-link" href="/sales">
               View all
             </Link>
@@ -174,6 +375,9 @@ export default function TodayPage() {
                 </div>
               </div>
             ))}
+            {data.recentActivity?.length === 0 && (
+              <div className="dash-empty">No activity today yet</div>
+            )}
           </div>
         </div>
 
@@ -221,17 +425,18 @@ export default function TodayPage() {
                     <stop offset="100%" stopColor="rgba(59,130,246,0.05)" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="rgba(45,58,79,0.55)" vertical={false} />
-                <XAxis dataKey="date" tick={{ fill: "#8b9cb3", fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#8b9cb3", fontSize: 12 }} axisLine={false} tickLine={false} />
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#64748b", fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
-                    background: "#101827",
-                    border: "1px solid #2d3a4f",
+                    background: "#ffffff",
+                    border: "1px solid #e2e8f0",
                     borderRadius: 10,
-                    color: "#e8eef7",
+                    color: "#0f172a",
+                    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
                   }}
-                  labelStyle={{ color: "#8b9cb3" }}
+                  labelStyle={{ color: "#64748b" }}
                   formatter={(value) =>
                     formatMoney(typeof value === "number" ? value : Number(value ?? 0))
                   }
@@ -259,13 +464,17 @@ function MetricCard({
   label,
   value,
   sub,
+  subExtra,
   tone,
+  action,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   sub?: string;
+  subExtra?: string;
   tone: "blue" | "green" | "orange" | "purple" | "red" | "teal";
+  action?: React.ReactNode;
 }) {
   return (
     <motion.div
@@ -275,10 +484,14 @@ function MetricCard({
       transition={{ duration: 0.25 }}
       whileHover={{ y: -2 }}
     >
-      <div className="dash-metric-icon">{icon}</div>
+      <div className="dash-metric-top">
+        <div className="dash-metric-icon">{icon}</div>
+        {action}
+      </div>
       <div className="dash-metric-label">{label}</div>
       <div className="dash-metric-value">{value}</div>
       {sub && <div className="dash-metric-sub">{sub}</div>}
+      {subExtra && <div className="dash-metric-sub-extra">{subExtra}</div>}
     </motion.div>
   );
 }

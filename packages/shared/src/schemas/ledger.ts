@@ -34,3 +34,9 @@ export const bulkPartySchema = z.object({ entries: z.array(partyLedgerSchema) })
 export const bulkUdhharSchema = z.object({ entries: z.array(udhharDaySchema) });
 export const bulkBankSchema = z.object({ entries: z.array(bankBalanceDaySchema) });
 export const bulkWithdrawalSchema = z.object({ entries: z.array(withdrawalSchema) });
+
+export const createWithdrawalSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  amount: z.coerce.number().positive(),
+  description: z.string().optional(),
+});

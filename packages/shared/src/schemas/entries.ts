@@ -1,17 +1,32 @@
 import { z } from "zod";
+import { TRANSFER_SERVICE_KEYS } from "../constants/money-transfer.js";
+import { roundMoney } from "../lib/money.js";
+
+const moneyAmount = z.coerce.number().transform(roundMoney);
 
 export const rechargeEntrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   operator: z.enum(["AIRTEL", "JIO", "VI", "BSNL", "ALL_IN_ONE"]),
   entryType: z.enum(["SALE_PROFIT", "CHILLAR", "ACT", "MNP"]),
-  amount: z.number(),
+  amount: moneyAmount,
   note: z.string().optional(),
+});
+
+/** One recharge form — face value + all profit types at once (profit empty = 0) */
+export const rechargeBatchSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  operator: z.enum(["AIRTEL", "JIO", "VI", "BSNL", "ALL_IN_ONE"]),
+  rechargeAmount: moneyAmount,
+  saleProfit: moneyAmount.default(0),
+  chillar: moneyAmount.default(0),
+  act: moneyAmount.default(0),
+  mnp: moneyAmount.default(0),
 });
 
 export const transferEntrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  serviceKey: z.string().min(1),
-  amount: z.number(),
+  serviceKey: z.enum(TRANSFER_SERVICE_KEYS),
+  amount: moneyAmount,
   note: z.string().optional(),
 });
 
@@ -21,10 +36,8 @@ export const repairIntakeSchema = z.object({
   customerPhone: z.string().optional(),
   device: z.string().min(1),
   issueDescription: z.string().min(1),
-  /** Shop cost (parts + labour combined) */
-  repairCost: z.number().min(0).default(0),
-  /** Amount customer will pay */
-  customerCharge: z.number().min(0).default(0),
+  repairCost: moneyAmount.default(0),
+  customerCharge: moneyAmount.default(0),
   note: z.string().optional(),
 });
 
@@ -32,9 +45,9 @@ export const repairJobSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   customerName: z.string().optional(),
   device: z.string().optional(),
-  partsCost: z.number().min(0).default(0),
-  labourCost: z.number().min(0).default(0),
-  salePrice: z.number().min(0),
+  partsCost: moneyAmount.default(0),
+  labourCost: moneyAmount.default(0),
+  salePrice: moneyAmount,
   note: z.string().optional(),
 });
 
@@ -46,11 +59,11 @@ export const updateRepairJobSchema = z.object({
     "DELIVERED",
     "UNREPAIRABLE_RETURNED",
   ]),
-  repairCost: z.number().min(0).optional(),
-  customerCharge: z.number().min(0).optional(),
-  partsCost: z.number().min(0).optional(),
-  labourCost: z.number().min(0).optional(),
-  salePrice: z.number().min(0).optional(),
+  repairCost: moneyAmount.optional(),
+  customerCharge: moneyAmount.optional(),
+  partsCost: moneyAmount.optional(),
+  labourCost: moneyAmount.optional(),
+  salePrice: moneyAmount.optional(),
   deliveredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().optional(),
 });
@@ -81,12 +94,13 @@ export const partySchema = z.object({
 export const partyTransactionSchema = z.object({
   partyId: z.string(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  materialIn: z.number().min(0).default(0),
-  paymentOut: z.number().min(0).default(0),
+  materialIn: moneyAmount.default(0),
+  paymentOut: moneyAmount.default(0),
   note: z.string().optional(),
 });
 
 export type RechargeEntryInput = z.infer<typeof rechargeEntrySchema>;
+export type RechargeBatchInput = z.infer<typeof rechargeBatchSchema>;
 export type TransferEntryInput = z.infer<typeof transferEntrySchema>;
 export type RepairIntakeInput = z.infer<typeof repairIntakeSchema>;
 export type RepairJobInput = z.infer<typeof repairJobSchema>;
@@ -94,19 +108,12 @@ export type UpdateRepairJobInput = z.infer<typeof updateRepairJobSchema>;
 export type PartyInput = z.infer<typeof partySchema>;
 export type PartyTransactionInput = z.infer<typeof partyTransactionSchema>;
 
-export const TRANSFER_SERVICES = [
-  { key: "dmt99Dmt", label: "DMT99 DMT" },
-  { key: "dmt99Aeps", label: "DMT99 AEPS" },
-  { key: "dmt99Nepal", label: "DMT99 Nepal" },
-  { key: "dmt99BillPay", label: "DMT99 Bill Pay" },
-  { key: "dmt99Qr", label: "DMT99 QR" },
-  { key: "dmt86Dmt", label: "DMT86 DMT" },
-  { key: "dmt86Aeps", label: "DMT86 AEPS" },
-  { key: "dmt86Credit", label: "DMT86 Credit" },
-  { key: "dmt86BillPay", label: "DMT86 Bill Pay" },
-  { key: "dmt86Wallet", label: "DMT86 Wallet" },
-  { key: "dmt86Qr", label: "DMT86 QR" },
-  { key: "dmt86Nepal", label: "DMT86 Nepal" },
-  { key: "imeAeps", label: "IME AEPS" },
-  { key: "imeNepal", label: "IME Nepal" },
-] as const;
+export {
+  TRANSFER_CATEGORIES,
+  TRANSFER_SERVICES,
+  TRANSFER_SERVICE_KEYS,
+  getTransferLabel,
+  getCategoryForKey,
+  getSubServicesForCategory,
+  isValidTransferServiceKey,
+} from "../constants/money-transfer.js";
