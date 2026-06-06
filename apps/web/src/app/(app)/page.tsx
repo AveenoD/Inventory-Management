@@ -129,6 +129,7 @@ export default function TodayPage() {
   }
 
   function dismissDay1Prompt() {
+    if (!data) return;
     localStorage.setItem(openingDismissKey(data.year, data.month), "1");
     setDay1PromptOpen(false);
   }

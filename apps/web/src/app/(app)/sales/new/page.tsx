@@ -94,6 +94,7 @@ export default function NewSalePage() {
         date: today,
         customerName: customerName || undefined,
         paymentMethod,
+        discount: discountValue,
         lines: cart.map((c) => ({ productId: c.productId, quantity: c.qty, unitPrice: c.unitPrice })),
       }),
     onSuccess: () => {
@@ -415,7 +416,14 @@ export default function NewSalePage() {
                 <button
                   type="button"
                   disabled={cart.length === 0 || create.isPending}
-                  onClick={() => create.mutate()}
+                  onClick={() => {
+                    if (discountValue > subtotal) {
+                      setCartError("Discount cannot exceed subtotal.");
+                      return;
+                    }
+                    setCartError("");
+                    create.mutate();
+                  }}
                 >
                   {create.isPending ? "Processing…" : "Complete Sale"}
                 </button>

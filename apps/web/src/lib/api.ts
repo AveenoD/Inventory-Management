@@ -78,11 +78,15 @@ export const api = {
     kind?: import("@sk-mobile/shared").ProductKind,
     limit?: number,
     excludeKinds?: import("@sk-mobile/shared").ProductKind[],
-  ) => withAuth(() => client.getProducts(page, search, kind, limit, excludeKinds)),
+    filters?: { phoneModelId?: string; coverTypeId?: string; segment?: "covers" | "other_accessories" },
+  ) => withAuth(() => client.getProducts(page, search, kind, limit, excludeKinds, filters)),
   getAllProducts: (search?: string, kind?: import("@sk-mobile/shared").ProductKind) =>
     withAuth(() => client.getAllProducts(search, kind)),
-  getCoverTypes: () => withAuth(() => client.getCoverTypes()),
-  createCoverType: (name: string) => withAuth(() => client.createCoverType(name)),
+  getPhoneModels: () => withAuth(() => client.getPhoneModels()),
+  createPhoneModel: (name: string) => withAuth(() => client.createPhoneModel(name)),
+  getCoverTypes: (phoneModelId: string) => withAuth(() => client.getCoverTypes(phoneModelId)),
+  createCoverType: (phoneModelId: string, name: string) =>
+    withAuth(() => client.createCoverType(phoneModelId, name)),
   getLowStock: () => withAuth(() => client.getLowStock()),
   createProduct: (data: Parameters<typeof client.createProduct>[0]) =>
     withAuth(() => client.createProduct(data)),

@@ -9,6 +9,7 @@ import {
   getCategoryForKey,
   getSubServicesForCategory,
   type TransferCategoryId,
+  type TransferServiceKey,
 } from "@sk-mobile/shared";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
@@ -38,8 +39,8 @@ export default function MoneyTransferPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [categoryId, setCategoryId] = useState<TransferCategoryId>(DEFAULT_CATEGORY);
-  const [serviceKey, setServiceKey] = useState<string>(
-    getSubServicesForCategory(DEFAULT_CATEGORY)[0].key,
+  const [serviceKey, setServiceKey] = useState<TransferServiceKey>(
+    getSubServicesForCategory(DEFAULT_CATEGORY)[0]!.key,
   );
   const [amount, setAmount] = useState("");
 
@@ -68,10 +69,10 @@ export default function MoneyTransferPage() {
   function handleCategoryChange(nextCategory: TransferCategoryId) {
     setCategoryId(nextCategory);
     const subs = getSubServicesForCategory(nextCategory);
-    setServiceKey(subs[0]?.key ?? serviceKey);
+    if (subs[0]) setServiceKey(subs[0].key);
   }
 
-  function handleSubServiceChange(nextKey: string) {
+  function handleSubServiceChange(nextKey: TransferServiceKey) {
     setServiceKey(nextKey);
   }
 
@@ -135,13 +136,13 @@ export default function MoneyTransferPage() {
 
   function openAddModal() {
     setCategoryId(DEFAULT_CATEGORY);
-    setServiceKey(getSubServicesForCategory(DEFAULT_CATEGORY)[0].key);
+    setServiceKey(getSubServicesForCategory(DEFAULT_CATEGORY)[0]!.key);
     setOpen(true);
   }
 
   return (
     <MonthGate>
-    <div>
+    <div className="money-transfer-page">
       <PageHeader
         title="Money Transfer"
         subtitle="DMT 99, DMT 86, and IME transfer services"
@@ -158,7 +159,7 @@ export default function MoneyTransferPage() {
                 }}
               />
             </div>
-            <button type="button" onClick={openAddModal}>
+            <button type="button" className="transfer-add-btn" onClick={openAddModal}>
               + Add Transfer
             </button>
           </div>
@@ -273,7 +274,7 @@ export default function MoneyTransferPage() {
             </div>
           </div>
 
-          <div className="data-table-wrap">
+          <div className="transfer-table-desktop data-table-wrap">
             <table className="data-list transfer-table">
               <thead>
                 <tr>
@@ -313,6 +314,38 @@ export default function MoneyTransferPage() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div className="transfer-card-list">
+            {paged.map((r) => {
+              const catId = getCategoryForKey(r.serviceKey);
+              const catLabel = TRANSFER_CATEGORIES.find((c) => c.id === catId)?.label ?? "—";
+              const subLabel =
+                TRANSFER_SERVICES.find((s) => s.key === r.serviceKey)?.subLabel ??
+                getTransferLabel(r.serviceKey);
+              return (
+                <article key={r.id} className="transfer-entry-card">
+                  <div className="transfer-entry-card__head">
+                    <div>
+                      <div className="transfer-service-name">{catLabel}</div>
+                      <div className="muted transfer-entry-card__sub">{subLabel}</div>
+                    </div>
+                    <strong>{formatMoney(r.amount)}</strong>
+                  </div>
+                  <div className="transfer-entry-card__foot">
+                    <span className="muted">{r.date}</span>
+                    <button
+                      type="button"
+                      className="secondary transfer-entry-card__delete"
+                      disabled={del.isPending}
+                      onClick={() => del.mutate(r.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           <div className="transfer-footer">
@@ -380,7 +413,10 @@ export default function MoneyTransferPage() {
           </select>
 
           <label className="stat-label">Sub-type</label>
-          <select value={serviceKey} onChange={(e) => handleSubServiceChange(e.target.value)}>
+          <select
+            value={serviceKey}
+            onChange={(e) => handleSubServiceChange(e.target.value as TransferServiceKey)}
+          >
             {subServices.map((s) => (
               <option key={s.key} value={s.key}>{s.label}</option>
             ))}

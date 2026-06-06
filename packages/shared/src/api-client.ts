@@ -3,7 +3,13 @@ import type { BusinessMonthDto, CreateMonthInput, UpdateMonthInput } from "./sch
 import type { DashboardResponse } from "./schemas/dashboard.js";
 import type { PaginatedResponse } from "./schemas/pagination.js";
 import type { TodaySummary } from "./schemas/today.js";
-import type { CoverTypeDto, ProductDto, ProductKind, SaleDto } from "./schemas/product.js";
+import type {
+  CoverTypeDto,
+  PhoneModelDto,
+  ProductDto,
+  ProductKind,
+  SaleDto,
+} from "./schemas/product.js";
 import type {
   CreateProductInput,
   CreateSaleInput,
@@ -239,11 +245,15 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       kind?: ProductKind,
       limit = 50,
       excludeKinds?: ProductKind[],
+      filters?: { phoneModelId?: string; coverTypeId?: string; segment?: "covers" | "other_accessories" },
     ) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) q.set("search", search);
       if (kind) q.set("kind", kind);
       if (excludeKinds?.length) q.set("excludeKinds", excludeKinds.join(","));
+      if (filters?.phoneModelId) q.set("phoneModelId", filters.phoneModelId);
+      if (filters?.coverTypeId) q.set("coverTypeId", filters.coverTypeId);
+      if (filters?.segment) q.set("segment", filters.segment);
       return request<PaginatedResponse<ProductDto>>(`/api/v1/inventory/products?${q}`);
     },
     async getAllProducts(search?: string, kind?: ProductKind) {
@@ -270,12 +280,21 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       }
       return { data: items, meta: first.meta };
     },
-    getCoverTypes: () =>
-      request<{ data: CoverTypeDto[] }>("/api/v1/inventory/cover-types"),
-    createCoverType: (name: string) =>
-      request<CoverTypeDto>("/api/v1/inventory/cover-types", {
+    getPhoneModels: () =>
+      request<{ data: PhoneModelDto[] }>("/api/v1/inventory/phone-models"),
+    createPhoneModel: (name: string) =>
+      request<PhoneModelDto>("/api/v1/inventory/phone-models", {
         method: "POST",
         body: JSON.stringify({ name }),
+      }),
+    getCoverTypes: (phoneModelId: string) =>
+      request<{ data: CoverTypeDto[] }>(
+        `/api/v1/inventory/cover-types?${new URLSearchParams({ phoneModelId })}`,
+      ),
+    createCoverType: (phoneModelId: string, name: string) =>
+      request<CoverTypeDto>("/api/v1/inventory/cover-types", {
+        method: "POST",
+        body: JSON.stringify({ phoneModelId, name }),
       }),
     getLowStock: () =>
       request<{ data: Array<{ id: string; name: string; stockQty: number; minStock: number }> }>(

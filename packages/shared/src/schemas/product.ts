@@ -12,6 +12,8 @@ export const createProductSchema = z.object({
   categoryId: z.string().optional(),
   categoryName: z.string().optional(),
   phoneModel: z.string().optional(),
+  phoneModelId: z.string().optional(),
+  variantName: z.string().optional(),
   coverTypeId: z.string().optional(),
   coverTypeName: z.string().optional(),
   partType: z.string().optional(),
@@ -22,9 +24,16 @@ export const createProductSchema = z.object({
   openingStock: z.number().int().min(0).default(0),
 });
 
+export const createPhoneModelSchema = z.object({
+  name: z.string().min(1).max(120),
+});
+
 export const createCoverTypeSchema = z.object({
   name: z.string().min(1).max(80),
+  phoneModelId: z.string().min(1),
 });
+
+export type PhoneModelDto = { id: string; name: string };
 
 export const updateProductSchema = createProductSchema.partial();
 
@@ -39,6 +48,7 @@ export const createSaleSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   customerName: z.string().optional(),
   paymentMethod: z.enum(["CASH", "UPI", "CARD"]).default("CASH"),
+  discount: z.number().min(0).default(0),
   lines: z
     .array(
       z.object({
@@ -54,7 +64,7 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type StockInInput = z.infer<typeof stockInSchema>;
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
-export type CoverTypeDto = { id: string; name: string };
+export type CoverTypeDto = { id: string; name: string; phoneModelId?: string | null };
 
 export type ProductDto = {
   id: string;
@@ -64,6 +74,8 @@ export type ProductDto = {
   categoryId: string | null;
   categoryName: string | null;
   phoneModel: string | null;
+  phoneModelId: string | null;
+  variantName: string | null;
   coverTypeId: string | null;
   coverTypeName: string | null;
   partType: string | null;
@@ -80,6 +92,8 @@ export type SaleDto = {
   date: string;
   customerName: string | null;
   paymentMethod: string;
+  subtotal: string;
+  discount: string;
   total: string;
   totalCost: string;
   lines: Array<{

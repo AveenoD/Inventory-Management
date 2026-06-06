@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createProductSchema,
   createCoverTypeSchema,
+  createPhoneModelSchema,
   updateProductSchema,
   stockInSchema,
   createSaleSchema,
@@ -18,9 +19,11 @@ import { resolveMonthForDate } from "../services/month-resolver.js";
 import { rollupMobileDayFromSales } from "../services/rollup.service.js";
 import {
   mapProductDto,
-  ensureDefaultCoverTypes,
+  ensureDefaultCoverTypesForPhoneModel,
+  resolvePhoneModel,
   resolveCoverType,
   ensureCategoryForKind,
+  productInclude,
 } from "../services/inventory-product.service.js";
 
 export const inventoryRouter = Router();
@@ -30,11 +33,51 @@ function parseDate(s: string) {
   return new Date(`${s}T00:00:00.000Z`);
 }
 
+function mapSaleDto(s: {
+  id: string;
+  date: Date;
+  customerName: string | null;
+  paymentMethod: string;
+  discount: { toString(): string };
+  total: { toString(): string };
+  totalCost: { toString(): string };
+  lines: Array<{
+    id: string;
+    productId: string;
+    product: { name: string };
+    quantity: number;
+    unitPrice: { toString(): string };
+    lineTotal: { toString(): string };
+  }>;
+}) {
+  const subtotal = s.lines.reduce((sum, l) => sum.plus(d(l.lineTotal)), d(0));
+  return {
+    id: s.id,
+    date: s.date.toISOString().slice(0, 10),
+    customerName: s.customerName,
+    paymentMethod: s.paymentMethod,
+    subtotal: fmt(subtotal),
+    discount: fmt(d(s.discount)),
+    total: fmt(d(s.total)),
+    totalCost: fmt(d(s.totalCost)),
+    lines: s.lines.map((l) => ({
+      id: l.id,
+      productId: l.productId,
+      productName: l.product.name,
+      quantity: l.quantity,
+      unitPrice: fmt(d(l.unitPrice)),
+      lineTotal: fmt(d(l.lineTotal)),
+    })),
+  };
+}
+
 inventoryRouter.get("/products", async (req, res, next) => {
   try {
     const q = paginationQuerySchema.parse(req.query);
     const search = String(req.query.search ?? "").trim();
     const categoryId = req.query.categoryId as string | undefined;
+    const phoneModelId = req.query.phoneModelId as string | undefined;
+    const coverTypeId = req.query.coverTypeId as string | undefined;
     const kind = req.query.kind as ProductKind | undefined;
     const excludeKinds =
       typeof req.query.excludeKinds === "string" && req.query.excludeKinds.trim()
@@ -45,16 +88,31 @@ inventoryRouter.get("/products", async (req, res, next) => {
         : undefined;
     const kindFilter =
       kind ?? (excludeKinds?.length ? ({ notIn: excludeKinds } as const) : undefined);
+    const segment = String(req.query.segment ?? "").trim();
 
     const where = {
       userId: req.user!.userId,
       isActive: true,
       ...(categoryId && { categoryId }),
+      ...(phoneModelId && { phoneModelId }),
+      ...(coverTypeId && { coverTypeId }),
       ...(kindFilter && { kind: kindFilter }),
+      ...(segment === "covers" && {
+        kind: "MOBILE_ACCESSORY" as const,
+        phoneModelId: { not: null },
+      }),
+      ...(segment === "other_accessories" && {
+        kind: "MOBILE_ACCESSORY" as const,
+        phoneModelId: null,
+      }),
       ...(search && {
         OR: [
           { name: { contains: search, mode: "insensitive" as const } },
           { sku: { contains: search, mode: "insensitive" as const } },
+          { phoneModel: { contains: search, mode: "insensitive" as const } },
+          { variantName: { contains: search, mode: "insensitive" as const } },
+          { coverType: { name: { contains: search, mode: "insensitive" as const } } },
+          { phoneModelRef: { name: { contains: search, mode: "insensitive" as const } } },
         ],
       }),
     };
@@ -62,7 +120,7 @@ inventoryRouter.get("/products", async (req, res, next) => {
     const { skip, take, totalPages } = paginate(q.page, q.limit, total);
     const products = await prisma.product.findMany({
       where,
-      include: { category: true, coverType: true },
+      include: productInclude,
       orderBy: { name: "asc" },
       skip,
       take,
@@ -98,15 +156,58 @@ inventoryRouter.get("/products/low-stock", async (req, res, next) => {
   }
 });
 
-inventoryRouter.get("/cover-types", async (req, res, next) => {
+inventoryRouter.get("/phone-models", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    await ensureDefaultCoverTypes(userId);
-    const types = await prisma.coverType.findMany({
+    const models = await prisma.phoneModel.findMany({
       where: { userId },
       orderBy: { name: "asc" },
     });
-    res.json({ data: types.map((t) => ({ id: t.id, name: t.name })) });
+    res.json({ data: models.map((m) => ({ id: m.id, name: m.name })) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.post("/phone-models", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const body = createPhoneModelSchema.parse(req.body);
+    const model = await prisma.phoneModel.upsert({
+      where: { userId_name: { userId, name: body.name.trim() } },
+      create: { userId, name: body.name.trim() },
+      update: {},
+    });
+    await ensureDefaultCoverTypesForPhoneModel(userId, model.id);
+    res.status(201).json({ id: model.id, name: model.name });
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.get("/cover-types", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const phoneModelId = String(req.query.phoneModelId ?? "").trim();
+    if (!phoneModelId) {
+      res.status(400).json({ error: "phoneModelId is required" });
+      return;
+    }
+    const model = await prisma.phoneModel.findFirst({
+      where: { id: phoneModelId, userId },
+    });
+    if (!model) {
+      res.status(404).json({ error: "Phone model not found" });
+      return;
+    }
+    await ensureDefaultCoverTypesForPhoneModel(userId, phoneModelId);
+    const types = await prisma.coverType.findMany({
+      where: { userId, phoneModelId },
+      orderBy: { name: "asc" },
+    });
+    res.json({
+      data: types.map((t) => ({ id: t.id, name: t.name, phoneModelId: t.phoneModelId })),
+    });
   } catch (e) {
     next(e);
   }
@@ -116,12 +217,25 @@ inventoryRouter.post("/cover-types", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const body = createCoverTypeSchema.parse(req.body);
+    const model = await prisma.phoneModel.findFirst({
+      where: { id: body.phoneModelId, userId },
+    });
+    if (!model) {
+      res.status(404).json({ error: "Phone model not found" });
+      return;
+    }
     const type = await prisma.coverType.upsert({
-      where: { userId_name: { userId, name: body.name.trim() } },
-      create: { userId, name: body.name.trim() },
+      where: {
+        userId_phoneModelId_name: {
+          userId,
+          phoneModelId: body.phoneModelId,
+          name: body.name.trim(),
+        },
+      },
+      create: { userId, phoneModelId: body.phoneModelId, name: body.name.trim() },
       update: {},
     });
-    res.status(201).json({ id: type.id, name: type.name });
+    res.status(201).json({ id: type.id, name: type.name, phoneModelId: type.phoneModelId });
   } catch (e) {
     next(e);
   }
@@ -136,13 +250,42 @@ inventoryRouter.post("/products", async (req, res, next) => {
     const cat = await ensureCategoryForKind(userId, kind);
     let categoryId = body.categoryId ?? cat.id;
 
-    let coverTypeId: string | undefined;
+    let phoneModelId: string | null = null;
+    let phoneModelName: string | undefined;
+    let coverTypeId: string | null = null;
     let coverTypeName: string | undefined;
-    if (kind === "MOBILE_ACCESSORY") {
-      const ct = await resolveCoverType(userId, body.coverTypeId, body.coverTypeName);
-      if (ct) {
-        coverTypeId = ct.id;
-        coverTypeName = ct.name;
+    const isDefaultCoverAccessory =
+      kind === "MOBILE_ACCESSORY" && !body.categoryId && !body.categoryName;
+
+    if (kind === "MOBILE_ACCESSORY" || kind === "REPAIR_PART") {
+      const pm = await resolvePhoneModel(userId, body.phoneModelId, body.phoneModel);
+      if (pm) {
+        phoneModelId = pm.id;
+        phoneModelName = pm.name;
+      }
+    }
+
+    if (isDefaultCoverAccessory) {
+      if (!phoneModelId) {
+        res.status(400).json({ error: "Phone model is required" });
+        return;
+      }
+      await ensureDefaultCoverTypesForPhoneModel(userId, phoneModelId);
+      const ct = await resolveCoverType(
+        userId,
+        phoneModelId,
+        body.coverTypeId,
+        body.coverTypeName,
+      );
+      if (!ct) {
+        res.status(400).json({ error: "Cover type is required" });
+        return;
+      }
+      coverTypeId = ct.id;
+      coverTypeName = ct.name;
+      if (!body.variantName?.trim()) {
+        res.status(400).json({ error: "Design / variant name is required" });
+        return;
       }
     }
 
@@ -161,8 +304,9 @@ inventoryRouter.post("/products", async (req, res, next) => {
     const name = buildProductName({
       kind,
       name: body.name,
-      phoneModel: body.phoneModel,
+      phoneModel: phoneModelName ?? body.phoneModel,
       coverTypeName,
+      variantName: body.variantName,
       partType: body.partType,
     });
 
@@ -179,11 +323,15 @@ inventoryRouter.post("/products", async (req, res, next) => {
       return;
     }
 
-    if (kind === "REPAIR_PART" && !body.phoneModel?.trim()) {
+    if (kind === "REPAIR_PART" && !phoneModelName && !body.phoneModel?.trim()) {
       res.status(400).json({ error: "Phone model is required" });
       return;
     }
-    if (kind === "MOBILE_ACCESSORY" && !body.phoneModel?.trim() && !body.name?.trim()) {
+    if (
+      kind === "MOBILE_ACCESSORY" &&
+      !isDefaultCoverAccessory &&
+      !body.name?.trim()
+    ) {
       res.status(400).json({ error: "Product name is required" });
       return;
     }
@@ -200,8 +348,10 @@ inventoryRouter.post("/products", async (req, res, next) => {
         name,
         sku: body.sku,
         categoryId,
-        phoneModel: body.phoneModel?.trim() || null,
-        coverTypeId: coverTypeId ?? null,
+        phoneModel: (phoneModelName ?? body.phoneModel?.trim()) || null,
+        phoneModelId,
+        variantName: isDefaultCoverAccessory ? body.variantName?.trim() || null : null,
+        coverTypeId,
         partType: kind === "REPAIR_PART" ? body.partType?.trim() || null : null,
         repairCharge: repairChargeFixed,
         buyPrice: buyPriceFixed,
@@ -209,7 +359,7 @@ inventoryRouter.post("/products", async (req, res, next) => {
         minStock: body.minStock,
         stockQty: body.openingStock,
       },
-      include: { category: true, coverType: true },
+      include: productInclude,
     });
     if (body.openingStock > 0) {
       await prisma.stockMovement.create({
@@ -247,7 +397,7 @@ inventoryRouter.patch("/products/:id", async (req, res, next) => {
         ...(body.sellPrice !== undefined && { sellPrice: fmt(d(body.sellPrice)) }),
         ...(body.minStock !== undefined && { minStock: body.minStock }),
       },
-      include: { category: true, coverType: true },
+      include: productInclude,
     });
     res.json(mapProductDto(product));
   } catch (e) {
@@ -308,22 +458,7 @@ inventoryRouter.get("/sales", async (req, res, next) => {
       take,
     });
     res.json({
-      data: sales.map((s) => ({
-        id: s.id,
-        date: s.date.toISOString().slice(0, 10),
-        customerName: s.customerName,
-        paymentMethod: s.paymentMethod,
-        total: fmt(d(s.total)),
-        totalCost: fmt(d(s.totalCost)),
-        lines: s.lines.map((l) => ({
-          id: l.id,
-          productId: l.productId,
-          productName: l.product.name,
-          quantity: l.quantity,
-          unitPrice: fmt(d(l.unitPrice)),
-          lineTotal: fmt(d(l.lineTotal)),
-        })),
-      })),
+      data: sales.map(mapSaleDto),
       meta: { page: q.page, limit: q.limit, total, totalPages },
     });
   } catch (e) {
@@ -338,7 +473,7 @@ inventoryRouter.post("/sales", async (req, res, next) => {
     const month = await resolveMonthForDate(req.user!.userId, date);
 
     const result = await prisma.$transaction(async (tx) => {
-      let total = d(0);
+      let subtotal = d(0);
       let totalCost = d(0);
       const lineData: Array<{
         productId: string;
@@ -359,7 +494,7 @@ inventoryRouter.post("/sales", async (req, res, next) => {
         const unitPrice = d(line.unitPrice ?? product.sellPrice);
         const unitCost = d(product.buyPrice);
         const lineTotal = unitPrice.times(line.quantity);
-        total = total.plus(lineTotal);
+        subtotal = subtotal.plus(lineTotal);
         totalCost = totalCost.plus(unitCost.times(line.quantity));
         lineData.push({
           productId: product.id,
@@ -370,6 +505,12 @@ inventoryRouter.post("/sales", async (req, res, next) => {
         });
       }
 
+      const discount = d(body.discount ?? 0);
+      if (discount.gt(subtotal)) {
+        throw new Error("Discount cannot exceed subtotal");
+      }
+      const total = subtotal.minus(discount);
+
       const sale = await tx.sale.create({
         data: {
           userId: req.user!.userId,
@@ -377,6 +518,7 @@ inventoryRouter.post("/sales", async (req, res, next) => {
           date,
           customerName: body.customerName,
           paymentMethod: body.paymentMethod,
+          discount: fmt(discount),
           total: fmt(total),
           totalCost: fmt(totalCost),
         },
@@ -411,22 +553,7 @@ inventoryRouter.post("/sales", async (req, res, next) => {
       include: { lines: { include: { product: true } } },
     });
 
-    res.status(201).json({
-      id: sale.id,
-      date: sale.date.toISOString().slice(0, 10),
-      customerName: sale.customerName,
-      paymentMethod: sale.paymentMethod,
-      total: fmt(d(sale.total)),
-      totalCost: fmt(d(sale.totalCost)),
-      lines: sale.lines.map((l) => ({
-        id: l.id,
-        productId: l.productId,
-        productName: l.product.name,
-        quantity: l.quantity,
-        unitPrice: fmt(d(l.unitPrice)),
-        lineTotal: fmt(d(l.lineTotal)),
-      })),
-    });
+    res.status(201).json(mapSaleDto(sale));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sale failed";
     res.status(400).json({ error: msg });

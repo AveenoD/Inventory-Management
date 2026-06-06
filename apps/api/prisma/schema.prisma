@@ -41,6 +41,7 @@ model User {
   sales          Sale[]
   parties        Party[]
   coverTypes     CoverType[]
+  phoneModels    PhoneModel[]
 }
 
 model BusinessMonth {
@@ -265,16 +266,32 @@ model Category {
   @@index([userId])
 }
 
-model CoverType {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  createdAt DateTime  @default(now())
-  products  Product[]
+model PhoneModel {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime    @default(now())
+  coverTypes CoverType[]
+  products   Product[]
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+model CoverType {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneModelId String?
+  phoneModel   PhoneModel? @relation(fields: [phoneModelId], references: [id], onDelete: Cascade)
+  name         String
+  createdAt    DateTime    @default(now())
+  products     Product[]
+
+  @@unique([userId, phoneModelId, name])
+  @@index([userId])
+  @@index([phoneModelId])
 }
 
 model Product {
@@ -287,6 +304,9 @@ model Product {
   name           String
   sku            String?
   phoneModel     String?
+  phoneModelId   String?
+  phoneModelRef  PhoneModel?     @relation(fields: [phoneModelId], references: [id], onDelete: SetNull)
+  variantName    String?
   coverTypeId    String?
   coverType      CoverType?      @relation(fields: [coverTypeId], references: [id], onDelete: SetNull)
   partType       String?
@@ -304,6 +324,7 @@ model Product {
   @@index([userId])
   @@index([userId, name])
   @@index([userId, kind])
+  @@index([phoneModelId])
 }
 
 model StockMovement {
@@ -330,6 +351,7 @@ model Sale {
   date            DateTime        @db.Date
   customerName    String?
   paymentMethod   String          @default("CASH")
+  discount        Decimal         @default(0) @db.Decimal(14, 2)
   total           Decimal         @default(0) @db.Decimal(14, 2)
   totalCost       Decimal         @default(0) @db.Decimal(14, 2)
   createdAt       DateTime        @default(now())

@@ -35,6 +35,8 @@ export default function SalesPage() {
               <th>Time</th>
               <th>Customer</th>
               <th>Items</th>
+              <th>Subtotal</th>
+              <th>Discount</th>
               <th>Total</th>
               <th>Payment</th>
             </tr>
@@ -45,6 +47,8 @@ export default function SalesPage() {
                 <td>{s.date}</td>
                 <td>{s.customerName ?? "Walk-in"}</td>
                 <td>{s.lines.length}</td>
+                <td>{formatMoney(s.subtotal)}</td>
+                <td>{parseFloat(s.discount) > 0 ? formatMoney(s.discount) : "—"}</td>
                 <td>{formatMoney(s.total)}</td>
                 <td>{s.paymentMethod}</td>
               </tr>
