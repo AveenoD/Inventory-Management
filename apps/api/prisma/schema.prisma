@@ -320,6 +320,7 @@ model Product {
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
   saleLines      SaleLine[]
+  repairJobParts RepairJobPart[]
 
   @@index([userId])
   @@index([userId, name])
@@ -424,11 +425,28 @@ model RepairJob {
   profit           Decimal          @default(0) @db.Decimal(14, 2)
   deliveredAt      DateTime?        @db.Date
   note             String?
+  /** Part used but not from shop inventory (ordered / external) */
+  otherPartUsed    String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
+  parts            RepairJobPart[]
 
   @@index([businessMonthId, date])
   @@index([businessMonthId, status])
+}
+
+model RepairJobPart {
+  id          String    @id @default(cuid())
+  repairJobId String
+  repairJob   RepairJob @relation(fields: [repairJobId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Int       @default(1)
+  unitCost    Decimal   @db.Decimal(14, 2)
+  createdAt   DateTime  @default(now())
+
+  @@index([repairJobId])
+  @@index([productId])
 }
 
 model Party {

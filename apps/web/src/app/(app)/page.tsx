@@ -18,10 +18,10 @@ import {
   ArrowLeftRight,
   Banknote,
   Bell,
+  ChevronDown,
   CircleDollarSign,
   Package,
   Pencil,
-  Search,
   Smartphone,
   TrendingUp,
   Wallet,
@@ -39,7 +39,7 @@ function openingDismissKey(year: number, month: number) {
 
 export default function TodayPage() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [search, setSearch] = useState("");
+  const [monthSummaryOpen, setMonthSummaryOpen] = useState(false);
   const [editOpeningOpen, setEditOpeningOpen] = useState(false);
   const [openingInput, setOpeningInput] = useState("");
   const [day1PromptOpen, setDay1PromptOpen] = useState(false);
@@ -217,80 +217,17 @@ export default function TodayPage() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
 
-          <div className="dash-search">
-            <Search size={16} />
-            <input
-              placeholder="Search anything…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <Link href="/sales/new" className="dash-topbar-action blue">
+            + Add Sale
+          </Link>
+          <Link href="/recharge" className="dash-topbar-action green">
+            + Recharge
+          </Link>
 
           <button type="button" className="dash-icon-btn secondary" aria-label="Notifications">
             <Bell size={16} />
           </button>
         </div>
-      </div>
-
-      <div className="dash-section-label">This Month</div>
-      <div className="dash-metrics dash-metrics-6">
-        <MetricCard
-          icon={<CircleDollarSign size={18} />}
-          label="Total Sales"
-          value={formatMoney(data.monthSalesTotal)}
-          sub="Mobile & accessories"
-          tone="blue"
-        />
-        <MetricCard
-          icon={<Smartphone size={18} />}
-          label="Recharge + Transfer"
-          value={formatMoney(data.monthRechargeTransferTotal)}
-          sub="Month recharge & money transfer"
-          tone="green"
-        />
-        <MetricCard
-          icon={<Wrench size={18} />}
-          label="Repair Profit"
-          value={formatMoney(data.monthRepairProfit)}
-          sub="Delivered repairs"
-          subExtra={
-            data.repairPendingCount > 0
-              ? `Undelivered: ${formatMoney(data.repairPendingBalance)} (${data.repairPendingCount})`
-              : "No undelivered repairs"
-          }
-          tone="orange"
-        />
-        <MetricCard
-          icon={<Package size={18} />}
-          label="Stock Value"
-          value={formatMoney(data.stockValue)}
-          tone="purple"
-        />
-        <MetricCard
-          icon={<Wallet size={18} />}
-          label="Opening Balance"
-          value={formatMoney(data.openingBalance)}
-          sub="Tap edit to change"
-          tone="teal"
-          action={
-            <button
-              type="button"
-              className="dash-metric-edit"
-              onClick={openEditOpening}
-              aria-label="Edit opening balance"
-            >
-              <Pencil size={12} />
-              Edit
-            </button>
-          }
-        />
-        <MetricCard
-          icon={<Banknote size={18} />}
-          label="Month Total Profit"
-          value={formatMoney(data.monthNetProfit)}
-          sub="All income minus expenses"
-          tone="blue"
-        />
       </div>
 
       <div className="dash-section-label">Today — {data.date}</div>
@@ -339,6 +276,81 @@ export default function TodayPage() {
         />
       </div>
 
+      <button
+        type="button"
+        className={`dash-summary-toggle ${monthSummaryOpen ? "open" : ""}`}
+        onClick={() => setMonthSummaryOpen((v) => !v)}
+        aria-expanded={monthSummaryOpen}
+      >
+        <span>{monthSummaryOpen ? "Hide month summary" : "View month summary"}</span>
+        <span className="dash-summary-toggle-meta">{monthLabel}</span>
+        <ChevronDown size={16} className="dash-summary-chevron" />
+      </button>
+
+      {monthSummaryOpen && (
+        <div className="dash-month-summary">
+          <div className="dash-metrics dash-metrics-6">
+            <MetricCard
+              icon={<CircleDollarSign size={18} />}
+              label="Total Sales"
+              value={formatMoney(data.monthSalesTotal)}
+              sub="Mobile & accessories"
+              tone="blue"
+            />
+            <MetricCard
+              icon={<Smartphone size={18} />}
+              label="Recharge + Transfer"
+              value={formatMoney(data.monthRechargeTransferTotal)}
+              sub="Month recharge & money transfer"
+              tone="green"
+            />
+            <MetricCard
+              icon={<Wrench size={18} />}
+              label="Repair Profit"
+              value={formatMoney(data.monthRepairProfit)}
+              sub="Delivered repairs"
+              subExtra={
+                data.repairPendingCount > 0
+                  ? `Undelivered: ${formatMoney(data.repairPendingBalance)} (${data.repairPendingCount})`
+                  : "No undelivered repairs"
+              }
+              tone="orange"
+            />
+            <MetricCard
+              icon={<Package size={18} />}
+              label="Stock Value"
+              value={formatMoney(data.stockValue)}
+              tone="purple"
+            />
+            <MetricCard
+              icon={<Wallet size={18} />}
+              label="Opening Balance"
+              value={formatMoney(data.openingBalance)}
+              sub="Tap edit to change"
+              tone="teal"
+              action={
+                <button
+                  type="button"
+                  className="dash-metric-edit"
+                  onClick={openEditOpening}
+                  aria-label="Edit opening balance"
+                >
+                  <Pencil size={12} />
+                  Edit
+                </button>
+              }
+            />
+            <MetricCard
+              icon={<Banknote size={18} />}
+              label="Month Total Profit"
+              value={formatMoney(data.monthNetProfit)}
+              sub="All income minus expenses"
+              tone="blue"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="dash-grid">
         <div className="dash-card dash-quick">
           <div className="dash-card-header">
@@ -365,7 +377,7 @@ export default function TodayPage() {
           </div>
           <div className="dash-activity-list">
             {(data.recentActivity ?? []).map((a) => (
-              <div key={`${a.at}-${a.type}-${a.title}`} className="dash-activity-item">
+              <div key={a.id} className="dash-activity-item">
                 <div className={`dash-dot ${a.type.toLowerCase()}`} />
                 <div className="dash-activity-text">
                   <div className="dash-activity-title">{a.title}</div>

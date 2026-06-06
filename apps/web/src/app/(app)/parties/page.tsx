@@ -9,7 +9,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney } from "@/lib/format";
+import { Trash2 } from "lucide-react";
 
 type PartyOption = { id: string; name: string };
 type PartyTxRow = {
@@ -32,6 +34,7 @@ export default function PartiesPage() {
   const [date, setDate] = useState(today);
   const [materialIn, setMaterialIn] = useState("0");
   const [paymentOut, setPaymentOut] = useState("0");
+  const [deleteTarget, setDeleteTarget] = useState<PartyTxRow | null>(null);
 
   const { data: parties } = useQuery({
     queryKey: ["party-list"],
@@ -70,6 +73,14 @@ export default function PartiesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["party-txs", monthId] });
       setTxOpen(false);
+    },
+  });
+
+  const removeTx = useMutation({
+    mutationFn: (txId: string) => api.deletePartyTransaction(monthId!, txId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["party-txs", monthId] });
+      setDeleteTarget(null);
     },
   });
 
@@ -129,6 +140,7 @@ export default function PartiesPage() {
               <th>Material in</th>
               <th>Payment out</th>
               <th>Pending</th>
+              <th className="col-action" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -141,6 +153,17 @@ export default function PartiesPage() {
                 <td>{formatMoney(r.materialIn)}</td>
                 <td>{formatMoney(r.paymentOut)}</td>
                 <td>{formatMoney(pending)}</td>
+                <td className="col-action">
+                  <button
+                    type="button"
+                    className="inventory-stock-btn danger"
+                    title="Delete transaction"
+                    aria-label="Delete transaction"
+                    onClick={() => setDeleteTarget(r)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </td>
               </tr>
               );
             })}
@@ -175,6 +198,19 @@ export default function PartiesPage() {
           <button type="submit" disabled={createTx.isPending}>Save</button>
         </form>
       </FormModal>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete transaction?"
+        message={
+          deleteTarget
+            ? `Remove ${deleteTarget.partyName} transaction on ${deleteTarget.date} permanently?`
+            : ""
+        }
+        loading={removeTx.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && removeTx.mutate(deleteTarget.id)}
+      />
     </div>
     </MonthGate>
   );

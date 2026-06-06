@@ -1,4 +1,5 @@
 import type { DashboardResponse } from "@sk-mobile/shared";
+import { poolBatch } from "../lib/pool-batch.js";
 import { prisma } from "../lib/prisma.js";
 import { d, fmt, sum } from "../lib/decimal.js";
 
@@ -20,56 +21,68 @@ export async function getDashboard(businessMonthId: string): Promise<DashboardRe
     partyAgg,
     bankDays,
     repairJobs,
-  ] = await Promise.all([
-    prisma.moneyTransferDay.aggregate({
-      where: { businessMonthId },
-      _sum: { total: true },
-    }),
-    prisma.rechargeDay.aggregate({
-      where: { businessMonthId },
-      _sum: { total: true },
-    }),
-    prisma.repairDay.aggregate({
-      where: { businessMonthId },
-      _sum: { sale: true, cost: true, profit: true },
-    }),
-    prisma.mobileAccessoryDay.aggregate({
-      where: { businessMonthId },
-      _sum: { sale: true, cost: true, profit: true },
-    }),
-    prisma.extraIncomeEntry.aggregate({
-      where: { businessMonthId },
-      _sum: { amount: true },
-    }),
-    prisma.shopExpenseDay.aggregate({
-      where: { businessMonthId },
-      _sum: { total: true },
-    }),
-    prisma.damageDay.aggregate({
-      where: { businessMonthId },
-      _sum: { amount: true },
-    }),
-    prisma.withdrawal.aggregate({
-      where: { businessMonthId },
-      _sum: { total: true },
-    }),
-    prisma.udhharDay.aggregate({
-      where: { businessMonthId },
-      _sum: { paymentOut: true, paymentIn: true },
-    }),
-    prisma.partyLedgerEntry.aggregate({
-      where: { businessMonthId },
-      _sum: { materialIn: true, paymentOut: true, outstanding: true },
-    }),
-    prisma.bankBalanceDay.findMany({
-      where: { businessMonthId },
-      orderBy: { date: "desc" },
-      take: 1,
-    }),
-    prisma.repairDay.aggregate({
-      where: { businessMonthId },
-      _sum: { jobCount: true },
-    }),
+  ] = await poolBatch([
+    () =>
+      prisma.moneyTransferDay.aggregate({
+        where: { businessMonthId },
+        _sum: { total: true },
+      }),
+    () =>
+      prisma.rechargeDay.aggregate({
+        where: { businessMonthId },
+        _sum: { total: true },
+      }),
+    () =>
+      prisma.repairDay.aggregate({
+        where: { businessMonthId },
+        _sum: { sale: true, cost: true, profit: true },
+      }),
+    () =>
+      prisma.mobileAccessoryDay.aggregate({
+        where: { businessMonthId },
+        _sum: { sale: true, cost: true, profit: true },
+      }),
+    () =>
+      prisma.extraIncomeEntry.aggregate({
+        where: { businessMonthId },
+        _sum: { amount: true },
+      }),
+    () =>
+      prisma.shopExpenseDay.aggregate({
+        where: { businessMonthId },
+        _sum: { total: true },
+      }),
+    () =>
+      prisma.damageDay.aggregate({
+        where: { businessMonthId },
+        _sum: { amount: true },
+      }),
+    () =>
+      prisma.withdrawal.aggregate({
+        where: { businessMonthId },
+        _sum: { total: true },
+      }),
+    () =>
+      prisma.udhharDay.aggregate({
+        where: { businessMonthId },
+        _sum: { paymentOut: true, paymentIn: true },
+      }),
+    () =>
+      prisma.partyLedgerEntry.aggregate({
+        where: { businessMonthId },
+        _sum: { materialIn: true, paymentOut: true, outstanding: true },
+      }),
+    () =>
+      prisma.bankBalanceDay.findMany({
+        where: { businessMonthId },
+        orderBy: { date: "desc" },
+        take: 1,
+      }),
+    () =>
+      prisma.repairDay.aggregate({
+        where: { businessMonthId },
+        _sum: { jobCount: true },
+      }),
   ]);
 
   const openingBalance = d(month.openingBalance);

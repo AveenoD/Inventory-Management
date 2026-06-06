@@ -51,6 +51,11 @@ export const repairJobSchema = z.object({
   note: z.string().optional(),
 });
 
+export const repairPartUsedSchema = z.object({
+  productId: z.string().min(1),
+  quantity: z.coerce.number().int().positive().default(1),
+});
+
 export const updateRepairJobSchema = z.object({
   status: z.enum([
     "RECEIVED",
@@ -64,6 +69,10 @@ export const updateRepairJobSchema = z.object({
   partsCost: moneyAmount.optional(),
   labourCost: moneyAmount.optional(),
   salePrice: moneyAmount.optional(),
+  /** Inventory repair parts consumed; empty array = none */
+  partsUsed: z.array(repairPartUsedSchema).optional(),
+  /** Part sourced outside inventory (ordered on demand) */
+  otherPartUsed: z.string().min(1).optional(),
   deliveredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   note: z.string().optional(),
 });
@@ -84,6 +93,13 @@ export type RepairJobDto = {
   profit: string;
   deliveredAt: string | null;
   note: string | null;
+  otherPartUsed: string | null;
+  partsUsed: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    unitCost: string;
+  }>;
 };
 
 export const partySchema = z.object({

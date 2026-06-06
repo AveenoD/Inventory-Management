@@ -1,13 +1,17 @@
-import type { Prisma, RepairJob } from "@prisma/client";
+import type { Prisma, RepairJob, RepairJobPart, Product } from "@prisma/client";
 import type { RepairJobStatus } from "@sk-mobile/shared";
 import { d, fmt } from "../lib/decimal.js";
 import { profit } from "./calculations.js";
+
+type RepairJobWithParts = RepairJob & {
+  parts?: Array<RepairJobPart & { product: Pick<Product, "name"> }>;
+};
 
 export function repairCostTotal(r: Pick<RepairJob, "partsCost" | "labourCost">) {
   return fmt(d(r.partsCost).plus(d(r.labourCost)));
 }
 
-export function mapRepairJobDto(r: RepairJob) {
+export function mapRepairJobDto(r: RepairJobWithParts) {
   const repairCost = repairCostTotal(r);
   const customerCharge = fmt(d(r.salePrice));
   return {
@@ -26,6 +30,13 @@ export function mapRepairJobDto(r: RepairJob) {
     profit: fmt(d(r.profit)),
     deliveredAt: r.deliveredAt ? r.deliveredAt.toISOString().slice(0, 10) : null,
     note: r.note,
+    otherPartUsed: r.otherPartUsed,
+    partsUsed: (r.parts ?? []).map((p) => ({
+      productId: p.productId,
+      productName: p.product.name,
+      quantity: p.quantity,
+      unitCost: fmt(d(p.unitCost)),
+    })),
   };
 }
 
@@ -66,9 +77,95 @@ export type StatusUpdateInput = {
   partsCost?: number;
   labourCost?: number;
   salePrice?: number;
+  partsUsed?: Array<{ productId: string; quantity: number }>;
+  otherPartUsed?: string;
   deliveredAt?: string;
   note?: string;
 };
+
+export function validateRepairPartSelection(input: StatusUpdateInput) {
+  const hasInventory = (input.partsUsed?.length ?? 0) > 0;
+  const hasOther = Boolean(input.otherPartUsed?.trim());
+  if (hasInventory && hasOther) {
+    throw new Error("Choose either an inventory part or other part, not both");
+  }
+}
+
+export async function consumeRepairParts(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  repairJobId: string,
+  parts: Array<{ productId: string; quantity: number }>,
+): Promise<{ partsCost: number; labourCost: number }> {
+  let partsTotal = d(0);
+
+  for (const line of parts) {
+    const product = await tx.product.findFirst({
+      where: { id: line.productId, userId, kind: "REPAIR_PART", isActive: true },
+    });
+    if (!product) {
+      throw new Error("Selected repair part not found in inventory");
+    }
+    if (product.stockQty < line.quantity) {
+      throw new Error(`Insufficient stock for ${product.name} (${product.stockQty} left)`);
+    }
+
+    const unitCost = d(product.buyPrice);
+    const lineCost = unitCost.times(line.quantity);
+    partsTotal = partsTotal.plus(lineCost);
+
+    await tx.repairJobPart.create({
+      data: {
+        repairJobId,
+        productId: product.id,
+        quantity: line.quantity,
+        unitCost: fmt(unitCost),
+      },
+    });
+
+    await tx.stockMovement.create({
+      data: {
+        productId: product.id,
+        type: "OUT",
+        quantity: line.quantity,
+        unitCost: fmt(unitCost),
+        note: `Repair job ${repairJobId}`,
+      },
+    });
+
+    await tx.product.update({
+      where: { id: product.id },
+      data: { stockQty: { decrement: line.quantity } },
+    });
+  }
+
+  return { partsCost: Number(partsTotal), labourCost: 0 };
+}
+
+export async function resolveRepairCompleteCostsInTx(
+  tx: Prisma.TransactionClient,
+  input: StatusUpdateInput,
+  userId: string,
+  repairJobId: string,
+): Promise<{ partsCost: number; labourCost: number }> {
+  if (input.partsUsed && input.partsUsed.length > 0) {
+    const existingCount = await tx.repairJobPart.count({ where: { repairJobId } });
+    if (existingCount > 0) {
+      throw new Error("Parts already recorded for this repair job");
+    }
+    const consumed = await consumeRepairParts(tx, userId, repairJobId, input.partsUsed);
+    const manualTotal = input.repairCost ?? consumed.partsCost;
+    const labourCost = Math.max(0, manualTotal - consumed.partsCost);
+    return { partsCost: consumed.partsCost, labourCost };
+  }
+
+  const manualTotal = input.repairCost ?? input.partsCost ?? 0;
+  const labour = input.labourCost ?? 0;
+  return {
+    partsCost: Math.max(0, manualTotal - labour),
+    labourCost: labour,
+  };
+}
 
 export function buildStatusUpdateData(
   current: RepairJob,
@@ -95,11 +192,10 @@ export function buildStatusUpdateData(
 
   if (status === "REPAIRED_PENDING_PICKUP") {
     const partsCost =
-      input.repairCost ??
       input.partsCost ??
+      input.repairCost ??
       Number(current.partsCost);
-    const labourCost =
-      input.repairCost != null ? 0 : (input.labourCost ?? Number(current.labourCost));
+    const labourCost = input.labourCost ?? Number(current.labourCost);
     const salePrice =
       input.customerCharge ??
       input.salePrice ??
@@ -116,6 +212,10 @@ export function buildStatusUpdateData(
       profit: profitVal,
       deliveredAt: null,
       note: input.note ?? current.note,
+      otherPartUsed:
+        (input.partsUsed?.length ?? 0) > 0
+          ? null
+          : input.otherPartUsed?.trim() || null,
     };
   }
 

@@ -23,8 +23,10 @@ import {
 } from "../services/rollup.service.js";
 import {
   mapRepairJobDto,
+  resolveRepairCompleteCostsInTx,
   buildStatusUpdateData,
   rollupDatesForJob,
+  validateRepairPartSelection,
 } from "../services/repair-workflow.service.js";
 
 export const entriesRouter = Router({ mergeParams: true });
@@ -275,6 +277,9 @@ entriesRouter.get("/repair-jobs", async (req, res, next) => {
     const { skip, take, totalPages } = paginate(q.page, q.limit, total);
     const rows = await prisma.repairJob.findMany({
       where,
+      include: {
+        parts: { include: { product: { select: { name: true } } } },
+      },
       orderBy: [{ updatedAt: "desc" }, { date: "desc" }],
       skip,
       take,
@@ -362,10 +367,34 @@ entriesRouter.patch("/repair-jobs/:jobId", async (req, res, next) => {
       res.status(404).json({ error: "Repair job not found" });
       return;
     }
-    const updateData = buildStatusUpdateData(existing, body);
-    const job = await prisma.repairJob.update({
-      where: { id: existing.id },
-      data: updateData,
+    if (body.status === "REPAIRED_PENDING_PICKUP") {
+      validateRepairPartSelection(body);
+    }
+    const job = await prisma.$transaction(async (tx) => {
+      let statusInput: typeof body = { ...body };
+      if (body.status === "REPAIRED_PENDING_PICKUP") {
+        const costs = await resolveRepairCompleteCostsInTx(
+          tx,
+          body,
+          req.user!.userId,
+          existing.id,
+        );
+        statusInput = {
+          ...body,
+          partsCost: costs.partsCost,
+          labourCost: costs.labourCost,
+          repairCost: undefined,
+        };
+      }
+
+      const updateData = buildStatusUpdateData(existing, statusInput);
+      return tx.repairJob.update({
+        where: { id: existing.id },
+        data: updateData,
+        include: {
+          parts: { include: { product: { select: { name: true } } } },
+        },
+      });
     });
     for (const dte of rollupDatesForJob(existing)) {
       await rollupRepairDay(mid, dte);
@@ -376,6 +405,46 @@ entriesRouter.patch("/repair-jobs/:jobId", async (req, res, next) => {
     res.json(mapRepairJobDto(job));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Update failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+entriesRouter.delete("/repair-jobs/:jobId", async (req, res, next) => {
+  try {
+    await guard(req, req.user!.userId);
+    const mid = monthIdFromParams(req.params);
+    const existing = await prisma.repairJob.findFirst({
+      where: { id: req.params.jobId, businessMonthId: mid },
+      include: { parts: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Repair job not found" });
+      return;
+    }
+    await prisma.$transaction(async (tx) => {
+      for (const part of existing.parts) {
+        await tx.product.update({
+          where: { id: part.productId },
+          data: { stockQty: { increment: part.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            productId: part.productId,
+            type: "IN",
+            quantity: part.quantity,
+            unitCost: part.unitCost,
+            note: `Repair job ${existing.id} deleted`,
+          },
+        });
+      }
+      await tx.repairJob.delete({ where: { id: existing.id } });
+    });
+    for (const dte of rollupDatesForJob(existing)) {
+      await rollupRepairDay(mid, dte);
+    }
+    res.status(204).end();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Delete failed";
     res.status(400).json({ error: msg });
   }
 });
@@ -445,6 +514,26 @@ entriesRouter.get("/party-transactions", async (req, res, next) => {
       })),
       meta: { page: q.page, limit: q.limit, total, totalPages },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+entriesRouter.delete("/party-transactions/:txId", async (req, res, next) => {
+  try {
+    await guard(req, req.user!.userId);
+    const mid = monthIdFromParams(req.params);
+    const tx = await prisma.partyTransaction.findFirst({
+      where: { id: req.params.txId, businessMonthId: mid },
+    });
+    if (!tx) {
+      res.status(404).json({ error: "Transaction not found" });
+      return;
+    }
+    const partyId = tx.partyId;
+    await prisma.partyTransaction.delete({ where: { id: tx.id } });
+    await rollupPartyLedger(mid, partyId);
+    res.status(204).end();
   } catch (e) {
     next(e);
   }

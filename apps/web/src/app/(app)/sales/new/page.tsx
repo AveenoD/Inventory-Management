@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PRODUCT_KIND_LABELS, type ProductDto, type ProductKind } from "@sk-mobile/shared";
-import { motion } from "framer-motion";
 import {
   CircleDollarSign,
   Filter,
@@ -183,7 +182,7 @@ export default function NewSalePage() {
               <div className="pos-search">
                 <Search size={16} />
                 <input
-                  placeholder="Search by name, model, SKU…"
+                  placeholder="Search by name or model…"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -210,17 +209,15 @@ export default function NewSalePage() {
                 </p>
               </div>
             ) : (
-              <div className="pos-grid">
+              <div className="pos-product-list card">
+                <div className="pos-grid">
                 {products.map((p) => {
                   const out = p.stockQty <= 0;
                   const inCart = cart.find((c) => c.productId === p.id);
                   return (
-                    <motion.div
+                    <div
                       key={p.id}
                       className={`pos-product${out ? " disabled" : ""}`}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.18 }}
                     >
                       <div className="pos-row-left">
                         <div className="pos-row-title">{p.name}</div>
@@ -244,9 +241,10 @@ export default function NewSalePage() {
                           + Add
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
+                </div>
               </div>
             )}
 

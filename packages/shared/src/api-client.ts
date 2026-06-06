@@ -305,6 +305,10 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "POST",
         body: JSON.stringify(data),
       }),
+    getProduct: (id: string) =>
+      request<ProductDto>(`/api/v1/inventory/products/${id}`),
+    deleteProduct: (id: string) =>
+      request<void>(`/api/v1/inventory/products/${id}`, { method: "DELETE" }),
     stockIn: (data: StockInInput) =>
       request<{ stockQty: number }>("/api/v1/inventory/stock/in", {
         method: "POST",
@@ -320,6 +324,8 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "POST",
         body: JSON.stringify(data),
       }),
+    deleteSale: (saleId: string) =>
+      request<void>(`/api/v1/inventory/sales/${saleId}`, { method: "DELETE" }),
     getCategories: () =>
       request<{ data: Array<{ id: string; name: string }> }>("/api/v1/inventory/categories"),
     createCategory: (name: string) =>
@@ -378,6 +384,8 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+    deleteRepairJob: (monthId: string, jobId: string) =>
+      request<void>(`/api/v1/months/${monthId}/repair-jobs/${jobId}`, { method: "DELETE" }),
     getPartyList: () =>
       request<{ data: Array<{ id: string; name: string; phone: string | null }> }>(
         "/api/v1/parties",
@@ -392,6 +400,10 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       request(`/api/v1/months/${monthId}/party-transactions`, {
         method: "POST",
         body: JSON.stringify(data),
+      }),
+    deletePartyTransaction: (monthId: string, txId: string) =>
+      request<void>(`/api/v1/months/${monthId}/party-transactions/${txId}`, {
+        method: "DELETE",
       }),
     importExcel: async (file: File, year: number, month: number) => {
       const token = getToken?.();

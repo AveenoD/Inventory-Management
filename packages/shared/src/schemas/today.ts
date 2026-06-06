@@ -28,6 +28,7 @@ export type TodaySummary = {
     profit: string;
   }>;
   recentActivity: Array<{
+    id: string;
     at: string;
     type: "SALE" | "RECHARGE" | "TRANSFER" | "REPAIR";
     title: string;

@@ -15,10 +15,19 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Trash2 } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
 import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 
 type Tab = "all" | "active" | "pending" | "delivered" | "unrepairable";
+
+const PART_OTHER = "__other__";
+
+function moneyFieldValue(amount: string | undefined) {
+  const n = parseMoneyInput(amount || "");
+  return n > 0 ? String(n) : "";
+}
 
 const TABS: { key: Tab; label: string; status?: RepairJobStatus }[] = [
   { key: "all", label: "All" },
@@ -51,12 +60,15 @@ export default function RepairPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [device, setDevice] = useState("");
   const [issueDescription, setIssueDescription] = useState("");
-  const [intakeRepairCost, setIntakeRepairCost] = useState("0");
-  const [intakeCustomerCharge, setIntakeCustomerCharge] = useState("0");
+  const [intakeRepairCost, setIntakeRepairCost] = useState("");
+  const [intakeCustomerCharge, setIntakeCustomerCharge] = useState("");
 
-  const [repairCost, setRepairCost] = useState("0");
+  const [repairCost, setRepairCost] = useState("");
   const [customerCharge, setCustomerCharge] = useState("");
+  const [selectedPartId, setSelectedPartId] = useState("");
+  const [otherPartName, setOtherPartName] = useState("");
   const [deliveredAt, setDeliveredAt] = useState(today);
+  const [deleteTarget, setDeleteTarget] = useState<RepairJobDto | null>(null);
 
   const tabDef = TABS.find((t) => t.key === tab)!;
   const { data, isLoading, error, refetch } = useQuery({
@@ -65,6 +77,13 @@ export default function RepairPage() {
       api.getRepairJobs(monthId!, 1, tabDef.status ? { status: tabDef.status } : undefined),
     enabled: !!monthId,
   });
+
+  const { data: repairPartsData } = useQuery({
+    queryKey: ["products", "REPAIR_PART"],
+    queryFn: () => api.getProducts(1, undefined, "REPAIR_PART", 200),
+  });
+
+  const repairParts = repairPartsData?.data ?? [];
 
   const { data: pendingData } = useQuery({
     queryKey: ["repair-jobs", monthId, "REPAIRED_PENDING_PICKUP"],
@@ -92,6 +111,7 @@ export default function RepairPage() {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["repair-jobs", monthId] });
+    qc.invalidateQueries({ queryKey: ["products"] });
     qc.invalidateQueries({ queryKey: ["today"] });
     qc.invalidateQueries({ queryKey: ["dashboard", monthId] });
   };
@@ -114,8 +134,16 @@ export default function RepairPage() {
       setCustomerPhone("");
       setDevice("");
       setIssueDescription("");
-      setIntakeRepairCost("0");
-      setIntakeCustomerCharge("0");
+      setIntakeRepairCost("");
+      setIntakeCustomerCharge("");
+    },
+  });
+
+  const removeJob = useMutation({
+    mutationFn: (jobId: string) => api.deleteRepairJob(monthId!, jobId),
+    onSuccess: () => {
+      invalidate();
+      setDeleteTarget(null);
     },
   });
 
@@ -125,28 +153,55 @@ export default function RepairPage() {
       status: RepairJobStatus;
       repairCost?: number;
       customerCharge?: number;
+      partsUsed?: Array<{ productId: string; quantity: number }>;
+      otherPartUsed?: string;
       deliveredAt?: string;
     }) =>
       api.updateRepairJob(monthId!, payload.jobId, {
         status: payload.status,
         repairCost: payload.repairCost,
         customerCharge: payload.customerCharge,
+        partsUsed: payload.partsUsed,
+        otherPartUsed: payload.otherPartUsed,
         deliveredAt: payload.deliveredAt,
       }),
     onSuccess: () => {
       invalidate();
       setActionJob(null);
       setActionKind(null);
-      setRepairCost("0");
+      setRepairCost("");
       setCustomerCharge("");
+      setSelectedPartId("");
+      setOtherPartName("");
     },
   });
 
   function openComplete(job: RepairJobDto) {
     setActionJob(job);
     setActionKind("complete");
-    setRepairCost(job.repairCost || "0");
-    setCustomerCharge(job.customerCharge || job.salePrice || "");
+    setRepairCost(moneyFieldValue(job.repairCost));
+    setCustomerCharge(moneyFieldValue(job.customerCharge || job.salePrice));
+    if (job.otherPartUsed) {
+      setSelectedPartId(PART_OTHER);
+      setOtherPartName(job.otherPartUsed);
+    } else {
+      setSelectedPartId(job.partsUsed?.[0]?.productId ?? "");
+      setOtherPartName("");
+    }
+  }
+
+  function handlePartChange(partId: string) {
+    setSelectedPartId(partId);
+    if (partId === PART_OTHER) return;
+    if (!partId) {
+      setOtherPartName("");
+      return;
+    }
+    setOtherPartName("");
+    const part = repairParts.find((p) => p.id === partId);
+    if (part) {
+      setRepairCost(moneyFieldValue(part.buyPrice));
+    }
   }
 
   function openDeliver(job: RepairJobDto) {
@@ -224,6 +279,7 @@ export default function RepairPage() {
                   <th>Customer</th>
                   <th>Device</th>
                   <th>Issue</th>
+                  <th>Part used</th>
                   <th>Repair cost</th>
                   <th>Customer charge</th>
                   <th>Profit</th>
@@ -249,6 +305,13 @@ export default function RepairPage() {
                     </td>
                     <td>{r.device ?? "—"}</td>
                     <td style={{ maxWidth: 180 }}>{r.issueDescription ?? "—"}</td>
+                    <td>
+                      {r.partsUsed?.length
+                        ? r.partsUsed.map((p) => p.productName).join(", ")
+                        : r.otherPartUsed
+                          ? `${r.otherPartUsed} (other)`
+                          : "—"}
+                    </td>
                     <td>
                       {r.status === "UNREPAIRABLE_RETURNED" ? "—" : formatMoney(r.repairCost)}
                     </td>
@@ -322,6 +385,15 @@ export default function RepairPage() {
                             Customer picked up
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="inventory-stock-btn danger"
+                          title="Delete job"
+                          aria-label="Delete repair job"
+                          onClick={() => setDeleteTarget(r)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -331,57 +403,154 @@ export default function RepairPage() {
           </div>
         )}
 
-        <FormModal open={intakeOpen} title="New repair intake" onClose={() => setIntakeOpen(false)}>
+        <FormModal
+          open={intakeOpen}
+          title="New repair intake"
+          subtitle="Register a device dropped off for repair."
+          size="lg"
+          onClose={() => setIntakeOpen(false)}
+        >
           <form
-            className="form-stack"
+            className="modal-form"
             onSubmit={(e) => {
               e.preventDefault();
               intake.mutate();
             }}
           >
-            <label className="stat-label">Date received</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
-            <label className="stat-label">Customer name</label>
-            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
-            <label className="stat-label">Phone (optional)</label>
-            <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-            <label className="stat-label">Device / model</label>
-            <input value={device} onChange={(e) => setDevice(e.target.value)} required />
-            <label className="stat-label">Issue description</label>
-            <textarea
-              value={issueDescription}
-              onChange={(e) => setIssueDescription(e.target.value)}
-              rows={3}
-              required
-            />
-            <label className="stat-label">Repair cost (your cost)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={intakeRepairCost}
-              onChange={(e) => setIntakeRepairCost(e.target.value)}
-              placeholder="Parts, labour, etc."
-            />
-            <label className="stat-label">Customer charge</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={intakeCustomerCharge}
-              onChange={(e) => setIntakeCustomerCharge(e.target.value)}
-              placeholder="Amount customer will pay"
-            />
+            <section className="form-step">
+              <div className="form-step__head">
+                <span className="form-step__num">1</span>
+                <span className="form-step__title">Customer</span>
+              </div>
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="intake-date">
+                    Date received
+                  </label>
+                  <input
+                    id="intake-date"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="intake-phone">
+                    Phone <span className="form-field__optional">(optional)</span>
+                  </label>
+                  <input
+                    id="intake-phone"
+                    type="tel"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="e.g. 98765 43210"
+                  />
+                </div>
+              </div>
+              <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                <label className="form-field__label" htmlFor="intake-customer">
+                  Customer name
+                </label>
+                <input
+                  id="intake-customer"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="e.g. Rahul Sharma"
+                  required
+                />
+              </div>
+            </section>
+
+            <section className="form-step">
+              <div className="form-step__head">
+                <span className="form-step__num">2</span>
+                <span className="form-step__title">Device & issue</span>
+              </div>
+              <div className="form-field">
+                <label className="form-field__label" htmlFor="intake-device">
+                  Device / model
+                </label>
+                <input
+                  id="intake-device"
+                  value={device}
+                  onChange={(e) => setDevice(e.target.value)}
+                  placeholder="e.g. Redmi Note 13, iPhone 12"
+                  required
+                />
+              </div>
+              <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                <label className="form-field__label" htmlFor="intake-issue">
+                  Issue description
+                </label>
+                <textarea
+                  id="intake-issue"
+                  value={issueDescription}
+                  onChange={(e) => setIssueDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Display broken, battery drain, charging issue…"
+                  required
+                />
+              </div>
+            </section>
+
+            <section className="form-step">
+              <div className="form-step__head">
+                <span className="form-step__num">3</span>
+                <span className="form-step__title">Pricing</span>
+              </div>
+              <p className="muted form-step__hint" style={{ marginTop: 0 }}>
+                Estimate now — exact part & cost update when repair is done.
+              </p>
+              <div className="form-row" style={{ marginTop: "0.85rem" }}>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="intake-repair-cost">
+                    Repair cost (your cost)
+                  </label>
+                  <input
+                    id="intake-repair-cost"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={intakeRepairCost}
+                    onChange={(e) => setIntakeRepairCost(e.target.value)}
+                    placeholder="e.g. 500"
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="intake-customer-charge">
+                    Customer charge
+                  </label>
+                  <input
+                    id="intake-customer-charge"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={intakeCustomerCharge}
+                    onChange={(e) => setIntakeCustomerCharge(e.target.value)}
+                    placeholder="e.g. 1200"
+                  />
+                </div>
+              </div>
+            </section>
+
             {intake.error && <p className="error">{(intake.error as Error).message}</p>}
-            <button type="submit" disabled={intake.isPending}>
-              {intake.isPending ? "Saving…" : "Save intake"}
-            </button>
+            <div className="modal-footer">
+              <button type="button" className="secondary" onClick={() => setIntakeOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" disabled={intake.isPending}>
+                {intake.isPending ? "Saving…" : "Save intake"}
+              </button>
+            </div>
           </form>
         </FormModal>
 
         <FormModal
           open={!!actionJob && actionKind === "complete"}
-          title="Repair completed — pending pickup"
+          title="Repair completed"
+          subtitle="Mark ready for customer pickup."
+          size="lg"
           onClose={() => {
             setActionJob(null);
             setActionKind(null);
@@ -389,44 +558,137 @@ export default function RepairPage() {
         >
           {actionJob && (
             <form
-              className="form-stack"
+              className="modal-form"
               onSubmit={(e) => {
                 e.preventDefault();
+                const isOther = selectedPartId === PART_OTHER;
                 updateStatus.mutate({
                   jobId: actionJob.id,
                   status: "REPAIRED_PENDING_PICKUP",
                   repairCost: parseMoneyInput(repairCost),
                   customerCharge: parseMoneyInput(customerCharge),
+                  partsUsed:
+                    selectedPartId && !isOther
+                      ? [{ productId: selectedPartId, quantity: 1 }]
+                      : [],
+                  otherPartUsed: isOther ? otherPartName.trim() : undefined,
                 });
               }}
             >
-              <p className="muted">
-                {actionJob.device} — {actionJob.customerName}. Profit is recorded only after the
-                customer picks up the phone.
+              <p className="dash-hint" style={{ margin: 0 }}>
+                <strong>{actionJob.device}</strong> — {actionJob.customerName}. Profit counts only
+                after pickup.
               </p>
-              <label className="stat-label">Repair cost (your cost)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={repairCost}
-                onChange={(e) => setRepairCost(e.target.value)}
-              />
-              <label className="stat-label">Customer charge</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={customerCharge}
-                onChange={(e) => setCustomerCharge(e.target.value)}
-                required
-              />
+
+              <section className="form-step">
+                <div className="form-step__head">
+                  <span className="form-step__num">1</span>
+                  <span className="form-step__title">Part used</span>
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="complete-part">
+                    Select from inventory
+                  </label>
+                  <select
+                    id="complete-part"
+                    value={selectedPartId}
+                    onChange={(e) => handlePartChange(e.target.value)}
+                  >
+                    <option value="">None — no part from stock</option>
+                    {repairParts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.stockQty} in stock · cost {formatMoney(p.buyPrice)})
+                      </option>
+                    ))}
+                    <option value={PART_OTHER}>Other — part ordered / not in stock</option>
+                  </select>
+                </div>
+                {selectedPartId === PART_OTHER && (
+                  <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                    <label className="form-field__label" htmlFor="complete-other-part">
+                      What part was used?
+                    </label>
+                    <input
+                      id="complete-other-part"
+                      value={otherPartName}
+                      onChange={(e) => setOtherPartName(e.target.value)}
+                      placeholder="e.g. Charging flex cable, back glass"
+                      required
+                    />
+                    <p className="muted form-step__hint">
+                      Not from shop inventory — stock will not change.
+                    </p>
+                  </div>
+                )}
+                {repairParts.length === 0 && selectedPartId !== PART_OTHER && (
+                  <p className="muted form-step__hint">
+                    No repair parts in inventory. Add under Inventory → Add product → Repair Part,
+                    or choose Other.
+                  </p>
+                )}
+                {selectedPartId && selectedPartId !== PART_OTHER && (
+                  <p className="muted form-step__hint">
+                    Stock will reduce by 1 when you save.
+                  </p>
+                )}
+              </section>
+
+              <section className="form-step">
+                <div className="form-step__head">
+                  <span className="form-step__num">2</span>
+                  <span className="form-step__title">Final pricing</span>
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label className="form-field__label" htmlFor="complete-repair-cost">
+                      Repair cost (your cost)
+                    </label>
+                    <input
+                      id="complete-repair-cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={repairCost}
+                      onChange={(e) => setRepairCost(e.target.value)}
+                      placeholder="e.g. 500"
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-field__label" htmlFor="complete-customer-charge">
+                      Customer charge
+                    </label>
+                    <input
+                      id="complete-customer-charge"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={customerCharge}
+                      onChange={(e) => setCustomerCharge(e.target.value)}
+                      placeholder="e.g. 1200"
+                      required
+                    />
+                  </div>
+                </div>
+              </section>
+
               {updateStatus.error && (
                 <p className="error">{(updateStatus.error as Error).message}</p>
               )}
-              <button type="submit" disabled={updateStatus.isPending}>
-                {updateStatus.isPending ? "Saving…" : "Mark ready for pickup"}
-              </button>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setActionJob(null);
+                    setActionKind(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={updateStatus.isPending}>
+                  {updateStatus.isPending ? "Saving…" : "Mark ready for pickup"}
+                </button>
+              </div>
             </form>
           )}
         </FormModal>
@@ -434,6 +696,7 @@ export default function RepairPage() {
         <FormModal
           open={!!actionJob && actionKind === "deliver"}
           title="Customer picked up"
+          subtitle="Record delivery and count profit."
           onClose={() => {
             setActionJob(null);
             setActionKind(null);
@@ -441,7 +704,7 @@ export default function RepairPage() {
         >
           {actionJob && (
             <form
-              className="form-stack"
+              className="modal-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 updateStatus.mutate({
@@ -451,27 +714,58 @@ export default function RepairPage() {
                 });
               }}
             >
-              <p className="muted">
-                Charge {formatMoney(actionJob.customerCharge || actionJob.salePrice)} will count in
-                today&apos;s repair profit
-                and monthly net profit.
+              <p className="dash-hint" style={{ margin: 0 }}>
+                Charge <strong>{formatMoney(actionJob.customerCharge || actionJob.salePrice)}</strong>{" "}
+                will count in today&apos;s repair profit and monthly net profit.
               </p>
-              <label className="stat-label">Delivery date</label>
-              <input
-                type="date"
-                value={deliveredAt}
-                onChange={(e) => setDeliveredAt(e.target.value)}
-                required
-              />
+
+              <div className="form-field">
+                <label className="form-field__label" htmlFor="deliver-date">
+                  Delivery date
+                </label>
+                <input
+                  id="deliver-date"
+                  type="date"
+                  value={deliveredAt}
+                  onChange={(e) => setDeliveredAt(e.target.value)}
+                  required
+                />
+              </div>
+
               {updateStatus.error && (
                 <p className="error">{(updateStatus.error as Error).message}</p>
               )}
-              <button type="submit" disabled={updateStatus.isPending}>
-                {updateStatus.isPending ? "Saving…" : "Mark delivered"}
-              </button>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setActionJob(null);
+                    setActionKind(null);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={updateStatus.isPending}>
+                  {updateStatus.isPending ? "Saving…" : "Mark delivered"}
+                </button>
+              </div>
             </form>
           )}
         </FormModal>
+
+        <ConfirmDialog
+          open={!!deleteTarget}
+          title="Delete repair job?"
+          message={
+            deleteTarget
+              ? `Remove repair for ${deleteTarget.device ?? "this device"} permanently? Used parts will be returned to stock.`
+              : ""
+          }
+          loading={removeJob.isPending}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => deleteTarget && removeJob.mutate(deleteTarget.id)}
+        />
       </div>
     </MonthGate>
   );

@@ -19,7 +19,6 @@ export function mapProductDto(p: ProductWithRelations) {
   return {
     id: p.id,
     name: p.name,
-    sku: p.sku,
     kind: p.kind as ProductKind,
     categoryId: p.categoryId,
     categoryName: p.category?.name ?? categoryNameForKind(p.kind as ProductKind),

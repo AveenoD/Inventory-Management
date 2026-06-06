@@ -90,12 +90,26 @@ export const api = {
   getLowStock: () => withAuth(() => client.getLowStock()),
   createProduct: (data: Parameters<typeof client.createProduct>[0]) =>
     withAuth(() => client.createProduct(data)),
+  getProduct: (id: string) =>
+    withAuth(() =>
+      requestJson<import("@sk-mobile/shared").ProductDto>(
+        `/api/v1/inventory/products/${id}`,
+      ),
+    ),
+  deleteProduct: (id: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/inventory/products/${id}`, { method: "DELETE" }),
+    ),
   stockIn: (data: Parameters<typeof client.stockIn>[0]) =>
     withAuth(() => client.stockIn(data)),
   getSales: (page?: number, date?: string) =>
     withAuth(() => client.getSales(page, date)),
   createSale: (data: Parameters<typeof client.createSale>[0]) =>
     withAuth(() => client.createSale(data)),
+  deleteSale: (saleId: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/inventory/sales/${saleId}`, { method: "DELETE" }),
+    ),
   getCategories: () => withAuth(() => client.getCategories()),
   createCategory: (name: string) =>
     withAuth(() =>
@@ -136,6 +150,12 @@ export const api = {
     jobId: string,
     data: Parameters<typeof client.updateRepairJob>[2],
   ) => withAuth(() => client.updateRepairJob(monthId, jobId, data)),
+  deleteRepairJob: (monthId: string, jobId: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/months/${monthId}/repair-jobs/${jobId}`, {
+        method: "DELETE",
+      }),
+    ),
   getPartyList: () => withAuth(() => client.getPartyList()),
   createParty: (data: Parameters<typeof client.createParty>[0]) =>
     withAuth(() => client.createParty(data)),
@@ -145,6 +165,12 @@ export const api = {
     monthId: string,
     data: Parameters<typeof client.createPartyTransaction>[1],
   ) => withAuth(() => client.createPartyTransaction(monthId, data)),
+  deletePartyTransaction: (monthId: string, txId: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/months/${monthId}/party-transactions/${txId}`, {
+        method: "DELETE",
+      }),
+    ),
   importExcel: (file: File, year: number, month: number) =>
     client.importExcel(file, year, month),
   bulkMoneyTransfer: (monthId: string, entries: unknown[]) =>

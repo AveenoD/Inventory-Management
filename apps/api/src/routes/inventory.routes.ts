@@ -108,7 +108,6 @@ inventoryRouter.get("/products", async (req, res, next) => {
       ...(search && {
         OR: [
           { name: { contains: search, mode: "insensitive" as const } },
-          { sku: { contains: search, mode: "insensitive" as const } },
           { phoneModel: { contains: search, mode: "insensitive" as const } },
           { variantName: { contains: search, mode: "insensitive" as const } },
           { coverType: { name: { contains: search, mode: "insensitive" as const } } },
@@ -346,7 +345,6 @@ inventoryRouter.post("/products", async (req, res, next) => {
         userId,
         kind,
         name,
-        sku: body.sku,
         categoryId,
         phoneModel: (phoneModelName ?? body.phoneModel?.trim()) || null,
         phoneModelId,
@@ -378,6 +376,91 @@ inventoryRouter.post("/products", async (req, res, next) => {
   }
 });
 
+inventoryRouter.get("/products/:id", async (req, res, next) => {
+  try {
+    const product = await prisma.product.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId, isActive: true },
+      include: productInclude,
+    });
+    if (!product) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+    res.json(mapProductDto(product));
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.delete("/products/:id", async (req, res, next) => {
+  try {
+    const existing = await prisma.product.findFirst({
+      where: { id: req.params.id, userId: req.user!.userId },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Product not found" });
+      return;
+    }
+
+    const salesToRollup: Array<{ businessMonthId: string; date: Date }> = [];
+
+    await prisma.$transaction(async (tx) => {
+      await tx.repairJobPart.deleteMany({ where: { productId: existing.id } });
+
+      const saleLines = await tx.saleLine.findMany({
+        where: { productId: existing.id },
+        include: { sale: true },
+      });
+      const saleIds = [...new Set(saleLines.map((l) => l.saleId))];
+
+      for (const saleId of saleIds) {
+        const sale = await tx.sale.findUnique({
+          where: { id: saleId },
+          include: { lines: true },
+        });
+        if (!sale) continue;
+
+        const remaining = sale.lines.filter((l) => l.productId !== existing.id);
+
+        if (remaining.length === 0) {
+          await tx.stockMovement.deleteMany({ where: { saleId } });
+          await tx.sale.delete({ where: { id: saleId } });
+        } else {
+          await tx.saleLine.deleteMany({ where: { saleId, productId: existing.id } });
+          await tx.stockMovement.deleteMany({ where: { saleId, productId: existing.id } });
+
+          let subtotal = d(0);
+          let totalCost = d(0);
+          for (const line of remaining) {
+            subtotal = subtotal.plus(d(line.lineTotal));
+            totalCost = totalCost.plus(d(line.unitCost).times(line.quantity));
+          }
+          const total = subtotal.minus(d(sale.discount));
+          await tx.sale.update({
+            where: { id: saleId },
+            data: { total: fmt(total), totalCost: fmt(totalCost) },
+          });
+        }
+
+        if (sale.businessMonthId) {
+          salesToRollup.push({ businessMonthId: sale.businessMonthId, date: sale.date });
+        }
+      }
+
+      await tx.stockMovement.deleteMany({ where: { productId: existing.id } });
+      await tx.product.delete({ where: { id: existing.id } });
+    });
+
+    for (const { businessMonthId, date } of salesToRollup) {
+      await rollupMobileDayFromSales(businessMonthId, date);
+    }
+
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
 inventoryRouter.patch("/products/:id", async (req, res, next) => {
   try {
     const body = updateProductSchema.parse(req.body);
@@ -392,7 +475,6 @@ inventoryRouter.patch("/products/:id", async (req, res, next) => {
       where: { id: req.params.id },
       data: {
         ...(body.name !== undefined && { name: body.name }),
-        ...(body.sku !== undefined && { sku: body.sku }),
         ...(body.buyPrice !== undefined && { buyPrice: fmt(d(body.buyPrice)) }),
         ...(body.sellPrice !== undefined && { sellPrice: fmt(d(body.sellPrice)) }),
         ...(body.minStock !== undefined && { minStock: body.minStock }),
@@ -557,6 +639,35 @@ inventoryRouter.post("/sales", async (req, res, next) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Sale failed";
     res.status(400).json({ error: msg });
+  }
+});
+
+inventoryRouter.delete("/sales/:saleId", async (req, res, next) => {
+  try {
+    const sale = await prisma.sale.findFirst({
+      where: { id: req.params.saleId, userId: req.user!.userId },
+      include: { lines: true },
+    });
+    if (!sale) {
+      res.status(404).json({ error: "Sale not found" });
+      return;
+    }
+    await prisma.$transaction(async (tx) => {
+      for (const line of sale.lines) {
+        await tx.product.update({
+          where: { id: line.productId },
+          data: { stockQty: { increment: line.quantity } },
+        });
+      }
+      await tx.stockMovement.deleteMany({ where: { saleId: sale.id } });
+      await tx.sale.delete({ where: { id: sale.id } });
+    });
+    if (sale.businessMonthId) {
+      await rollupMobileDayFromSales(sale.businessMonthId, sale.date);
+    }
+    res.status(204).end();
+  } catch (e) {
+    next(e);
   }
 });
 

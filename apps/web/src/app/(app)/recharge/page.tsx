@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   RECHARGE_OPERATORS,
   RECHARGE_AMOUNT_FIELDS,
@@ -134,6 +135,7 @@ export default function RechargePage() {
   const [operator, setOperator] = useState<RechargeOperator>("AIRTEL");
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [amounts, setAmounts] = useState(EMPTY_AMOUNTS);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -195,6 +197,8 @@ export default function RechargePage() {
     mutationFn: (entryId: string) => api.deleteRechargeEntry(monthId!, entryId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      setDeleteTargetId(null);
     },
   });
 
@@ -423,7 +427,7 @@ export default function RechargePage() {
                       className="icon-btn"
                       title="Delete"
                       disabled={del.isPending}
-                      onClick={() => del.mutate(r.id)}
+                      onClick={() => setDeleteTargetId(r.id)}
                     >
                       <MoreVertical size={16} />
                     </button>
@@ -535,6 +539,15 @@ export default function RechargePage() {
           </button>
         </form>
       </FormModal>
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        title="Delete recharge?"
+        message="Remove this recharge entry permanently? This cannot be undone."
+        loading={del.isPending}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={() => deleteTargetId && del.mutate(deleteTargetId)}
+      />
     </div>
     </MonthGate>
   );

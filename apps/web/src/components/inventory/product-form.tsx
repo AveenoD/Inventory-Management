@@ -145,7 +145,6 @@ export function ProductForm() {
   const [newCoverType, setNewCoverType] = useState("");
   const [variantName, setVariantName] = useState("");
   const [partType, setPartType] = useState<string>(REPAIR_PART_TYPES[0]);
-  const [sku, setSku] = useState("");
   const [buyPrice, setBuyPrice] = useState("");
   const [sellPrice, setSellPrice] = useState("");
   const [repairCharge, setRepairCharge] = useState("");
@@ -211,7 +210,6 @@ export function ProductForm() {
       return api.createProduct({
         kind,
         name: mode === "cover" ? undefined : name.trim() || undefined,
-        sku: sku || undefined,
         categoryId: mode === "other_accessory" ? categoryId || undefined : undefined,
         phoneModelId: mode === "cover" && phoneModelId ? phoneModelId : undefined,
         phoneModel: mode === "repair" ? phoneModel : undefined,
@@ -331,22 +329,61 @@ export function ProductForm() {
         ? "e.g. 25W Type-C Cable"
         : "e.g. Samsung A15 4/64";
 
-  return (
-    <form className="card form-stack product-form" onSubmit={handleSubmit}>
-      <div className="product-form-modes">
-        {MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            className={mode === m.id ? "product-form-mode active" : "product-form-mode"}
-            onClick={() => handleModeChange(m.id)}
-          >
-            <span className="product-form-mode__label">{m.label}</span>
-            <span className="product-form-mode__hint">{m.hint}</span>
-          </button>
-        ))}
-      </div>
+  function coverStepState(step: number): "done" | "current" | "pending" {
+    if (step === 1) return phoneModelId ? "done" : "current";
+    if (step === 2) return coverTypeId ? "done" : phoneModelId ? "current" : "pending";
+    if (step === 3) return variantName.trim() ? "done" : coverTypeId ? "current" : "pending";
+    return variantName.trim() ? "current" : "pending";
+  }
 
+  const coverSteps =
+    mode === "cover"
+      ? [
+          { n: 1, label: "Phone model" },
+          { n: 2, label: "Cover type" },
+          { n: 3, label: "Design" },
+          { n: 4, label: "Price & stock" },
+        ]
+      : [];
+
+  return (
+    <form className="product-add-form" onSubmit={handleSubmit}>
+      <div className="product-add-layout">
+        <aside className="product-add-sidebar">
+          <div className="product-add-sidebar__title">Product type</div>
+          <div className="product-form-modes product-form-modes--vertical">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={mode === m.id ? "product-form-mode active" : "product-form-mode"}
+                onClick={() => handleModeChange(m.id)}
+              >
+                <span className="product-form-mode__label">{m.label}</span>
+                <span className="product-form-mode__hint">{m.hint}</span>
+              </button>
+            ))}
+          </div>
+
+          {mode === "cover" && (
+            <div className="product-add-progress">
+              <div className="product-add-progress__title">Steps</div>
+              <ol className="product-add-progress__list">
+                {coverSteps.map((s) => (
+                  <li
+                    key={s.n}
+                    className={`product-add-progress__item ${coverStepState(s.n)}`}
+                  >
+                    <span className="product-add-progress__num">{s.n}</span>
+                    <span>{s.label}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </aside>
+
+        <div className="card form-stack product-add-main">
       {mode === "cover" && (
         <>
           <FormStep step={1} title="Phone model">
@@ -489,9 +526,6 @@ export function ProductForm() {
           <span className="form-step__title">Price & stock</span>
         </div>
 
-        <label className="stat-label">SKU (optional)</label>
-        <input value={sku} onChange={(e) => setSku(e.target.value)} />
-
         <div className="form-row">
           <div>
             <label className="stat-label">
@@ -556,9 +590,20 @@ export function ProductForm() {
 
       {formError && <p className="error">{formError}</p>}
       {create.error && <p className="error">{(create.error as Error).message}</p>}
-      <button type="submit" disabled={create.isPending}>
-        {create.isPending ? "Saving…" : mode === "cover" ? "Save cover" : "Save product"}
-      </button>
+      <div className="product-add-actions">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => router.push("/inventory")}
+        >
+          Cancel
+        </button>
+        <button type="submit" disabled={create.isPending}>
+          {create.isPending ? "Saving…" : mode === "cover" ? "Save cover" : "Save product"}
+        </button>
+      </div>
+        </div>
+      </div>
     </form>
   );
 }

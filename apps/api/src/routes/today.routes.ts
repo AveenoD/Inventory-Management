@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { poolBatch } from "../lib/pool-batch.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { d, fmt } from "../lib/decimal.js";
@@ -45,79 +46,93 @@ todayRouter.get("/", async (req, res, next) => {
       productCount,
       prevMonthRecord,
       monthDashboard,
-    ] = await Promise.all([
-      prisma.sale.findMany({
-        where: { userId, date },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.rechargeEntry.findMany({
-        where: { businessMonthId: month.id, date },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.transferEntry.findMany({
-        where: { businessMonthId: month.id, date },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.repairJob.findMany({
-        where: {
-          businessMonthId: month.id,
-          status: "DELIVERED",
-          deliveredAt: date,
-        },
-        orderBy: { updatedAt: "desc" },
-      }),
-      prisma.repairJob.findMany({
-        where: {
-          businessMonthId: month.id,
-          status: "REPAIRED_PENDING_PICKUP",
-        },
-        orderBy: { updatedAt: "desc" },
-      }),
-      prisma.repairJob.count({
-        where: {
-          status: "REPAIRED_PENDING_PICKUP",
-          businessMonth: { userId },
-        },
-      }),
-      prisma.repairJob.count({
-        where: {
-          businessMonthId: month.id,
-          status: { in: ["RECEIVED", "IN_PROGRESS", "REPAIRED_PENDING_PICKUP"] },
-        },
-      }),
-      prisma.$queryRaw<Array<{ id: string; name: string; stockQty: number; minStock: number }>>`
-        SELECT "id", "name", "stockQty", "minStock"
-        FROM "Product"
-        WHERE "userId" = ${userId}
-          AND "isActive" = true
-          AND "stockQty" <= "minStock"
-        ORDER BY ("stockQty" - "minStock") ASC, "name" ASC
-        LIMIT 5
-      `,
-      prisma.$queryRaw<[{ count: bigint }]>`
-        SELECT COUNT(*)::bigint AS count
-        FROM "Product"
-        WHERE "userId" = ${userId}
-          AND "isActive" = true
-          AND "stockQty" <= "minStock"
-      `.then((rows) => Number(rows[0]?.count ?? 0)),
-      prisma.sale.groupBy({
-        by: ["date"],
-        where: { userId, date: { gte: start7, lte: date } },
-        _sum: { total: true, totalCost: true },
-      }),
-      prisma.$queryRaw<[{ value: string | null }]>`
-        SELECT COALESCE(SUM("buyPrice" * "stockQty"), 0)::text AS value
-        FROM "Product"
-        WHERE "userId" = ${userId} AND "isActive" = true
-      `,
-      prisma.product.count({ where: { userId, isActive: true } }),
-      prisma.businessMonth.findUnique({
-        where: {
-          userId_year_month: { userId, year: prev.year, month: prev.month },
-        },
-      }),
-      getDashboard(month.id),
+    ] = await poolBatch([
+      () =>
+        prisma.sale.findMany({
+          where: { userId, date },
+          orderBy: { createdAt: "desc" },
+        }),
+      () =>
+        prisma.rechargeEntry.findMany({
+          where: { businessMonthId: month.id, date },
+          orderBy: { createdAt: "desc" },
+        }),
+      () =>
+        prisma.transferEntry.findMany({
+          where: { businessMonthId: month.id, date },
+          orderBy: { createdAt: "desc" },
+        }),
+      () =>
+        prisma.repairJob.findMany({
+          where: {
+            businessMonthId: month.id,
+            status: "DELIVERED",
+            deliveredAt: date,
+          },
+          orderBy: { updatedAt: "desc" },
+        }),
+      () =>
+        prisma.repairJob.findMany({
+          where: {
+            businessMonthId: month.id,
+            status: "REPAIRED_PENDING_PICKUP",
+          },
+          orderBy: { updatedAt: "desc" },
+        }),
+      () =>
+        prisma.repairJob.count({
+          where: {
+            status: "REPAIRED_PENDING_PICKUP",
+            businessMonth: { userId },
+          },
+        }),
+      () =>
+        prisma.repairJob.count({
+          where: {
+            businessMonthId: month.id,
+            status: { in: ["RECEIVED", "IN_PROGRESS", "REPAIRED_PENDING_PICKUP"] },
+          },
+        }),
+      () =>
+        prisma.$queryRaw<Array<{ id: string; name: string; stockQty: number; minStock: number }>>`
+          SELECT "id", "name", "stockQty", "minStock"
+          FROM "Product"
+          WHERE "userId" = ${userId}
+            AND "isActive" = true
+            AND "stockQty" <= "minStock"
+          ORDER BY ("stockQty" - "minStock") ASC, "name" ASC
+          LIMIT 5
+        `,
+      () =>
+        prisma
+          .$queryRaw<[{ count: bigint }]>`
+            SELECT COUNT(*)::bigint AS count
+            FROM "Product"
+            WHERE "userId" = ${userId}
+              AND "isActive" = true
+              AND "stockQty" <= "minStock"
+          `
+          .then((rows) => Number(rows[0]?.count ?? 0)),
+      () =>
+        prisma.sale.groupBy({
+          by: ["date"],
+          where: { userId, date: { gte: start7, lte: date } },
+          _sum: { total: true, totalCost: true },
+        }),
+      () =>
+        prisma.$queryRaw<[{ value: string | null }]>`
+          SELECT COALESCE(SUM("buyPrice" * "stockQty"), 0)::text AS value
+          FROM "Product"
+          WHERE "userId" = ${userId} AND "isActive" = true
+        `,
+      () => prisma.product.count({ where: { userId, isActive: true } }),
+      () =>
+        prisma.businessMonth.findUnique({
+          where: {
+            userId_year_month: { userId, year: prev.year, month: prev.month },
+          },
+        }),
+      () => getDashboard(month.id),
     ]);
 
     const salesTotal = sales.reduce((a, s) => a.plus(d(s.total)), d(0));
@@ -150,6 +165,7 @@ todayRouter.get("/", async (req, res, next) => {
 
     const recentActivity = [
       ...sales.slice(0, 6).map((s) => ({
+        id: s.id,
         at: s.createdAt.toISOString(),
         type: "SALE" as const,
         title: "Sale completed",
@@ -157,6 +173,7 @@ todayRouter.get("/", async (req, res, next) => {
         amount: fmt(d(s.total)),
       })),
       ...rechargeEntries.slice(0, 6).map((e) => ({
+        id: e.id,
         at: e.createdAt.toISOString(),
         type: "RECHARGE" as const,
         title: `Recharge ${e.operator}`,
@@ -164,6 +181,7 @@ todayRouter.get("/", async (req, res, next) => {
         amount: fmt(d(e.amount)),
       })),
       ...transferEntries.slice(0, 6).map((e) => ({
+        id: e.id,
         at: e.createdAt.toISOString(),
         type: "TRANSFER" as const,
         title: `Money transfer ${e.serviceKey}`,
@@ -171,6 +189,7 @@ todayRouter.get("/", async (req, res, next) => {
         amount: fmt(d(e.amount)),
       })),
       ...deliveredToday.slice(0, 6).map((j) => ({
+        id: j.id,
         at: j.updatedAt.toISOString(),
         type: "REPAIR" as const,
         title: "Repair delivered",

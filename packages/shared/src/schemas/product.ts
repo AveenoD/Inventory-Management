@@ -8,7 +8,6 @@ export const productKindSchema = z.enum(PRODUCT_KINDS);
 export const createProductSchema = z.object({
   kind: productKindSchema.default("MOBILE_ACCESSORY"),
   name: z.string().optional(),
-  sku: z.string().optional(),
   categoryId: z.string().optional(),
   categoryName: z.string().optional(),
   phoneModel: z.string().optional(),
@@ -69,7 +68,6 @@ export type CoverTypeDto = { id: string; name: string; phoneModelId?: string | n
 export type ProductDto = {
   id: string;
   name: string;
-  sku: string | null;
   kind: ProductKind;
   categoryId: string | null;
   categoryName: string | null;

@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 import { Calendar, Download, MoreVertical, Search } from "lucide-react";
 
@@ -51,6 +52,7 @@ export default function MoneyTransferPage() {
   const [subFilter, setSubFilter] = useState<string>("ALL");
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -108,6 +110,7 @@ export default function MoneyTransferPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
+      setDeleteTargetId(null);
     },
   });
 
@@ -304,7 +307,7 @@ export default function MoneyTransferPage() {
                           className="icon-btn"
                           title="Delete"
                           disabled={del.isPending}
-                          onClick={() => del.mutate(r.id)}
+                          onClick={() => setDeleteTargetId(r.id)}
                         >
                           <MoreVertical size={16} />
                         </button>
@@ -338,7 +341,7 @@ export default function MoneyTransferPage() {
                       type="button"
                       className="secondary transfer-entry-card__delete"
                       disabled={del.isPending}
-                      onClick={() => del.mutate(r.id)}
+                      onClick={() => setDeleteTargetId(r.id)}
                     >
                       Delete
                     </button>
@@ -438,6 +441,15 @@ export default function MoneyTransferPage() {
           </button>
         </form>
       </FormModal>
+
+      <ConfirmDialog
+        open={!!deleteTargetId}
+        title="Delete transfer?"
+        message="Remove this money transfer entry permanently? This cannot be undone."
+        loading={del.isPending}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={() => deleteTargetId && del.mutate(deleteTargetId)}
+      />
     </div>
     </MonthGate>
   );

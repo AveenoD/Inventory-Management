@@ -9,7 +9,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 
 export default function NewProductPage() {
   return (
-    <div className="page-centered">
+    <div className="product-add-page">
       <Link href="/inventory" className="page-back-link">
         <ArrowLeft size={16} aria-hidden />
         Back to inventory

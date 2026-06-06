@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { PackagePlus, Trash2 } from "lucide-react";
 import {
   PRODUCT_KIND_LABELS,
   type ProductKind,
@@ -13,6 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 type InventoryFilter =
   | "ALL"
@@ -26,12 +28,20 @@ type InventoryFilter =
 const FILTER_TABS: Array<{ id: InventoryFilter; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "COVERS", label: "Covers" },
-  { id: "OTHER_ACCESSORIES", label: "Other Accessories" },
+  { id: "OTHER_ACCESSORIES", label: "Accessories" },
   { id: "MOBILE", label: "Mobile" },
-  { id: "REPAIR_PART", label: "Repair Parts" },
+  { id: "REPAIR_PART", label: "Repair" },
   { id: "SPEAKERS_SOUND", label: "Speakers" },
   { id: "CHARGER_CABLE", label: "Chargers" },
 ];
+
+function productSubline(p: ProductDto, filter: InventoryFilter): string | null {
+  const detail = detailCell(p, filter);
+  const parts: string[] = [];
+  if (filter === "ALL") parts.push(PRODUCT_KIND_LABELS[p.kind]);
+  if (detail !== "—" && detail !== p.name) parts.push(detail);
+  return parts.length ? parts.join(" · ") : null;
+}
 
 const PAGE_SIZE = 25;
 
@@ -95,28 +105,22 @@ function InventoryProductCard({
   product: ProductDto;
   filter: InventoryFilter;
 }) {
-  const detail = detailCell(p, filter);
-  const showDetail = detail !== "—" && detail !== p.name;
+  const subline = productSubline(p, filter);
 
   return (
     <article className="inventory-card">
       <div className="inventory-card__head">
         <div className="inventory-card__title-wrap">
           <h3 className="inventory-card__title">{p.name}</h3>
-          {p.sku && <span className="inventory-card__sku">{p.sku}</span>}
+          {subline ? <p className="inventory-card__sub">{subline}</p> : null}
         </div>
-        <span className={p.stockQty <= p.minStock ? "badge warning" : "badge ok"}>
-          {p.stockQty} in stock
+        <span
+          className={
+            p.stockQty <= p.minStock ? "inventory-stock-pill low" : "inventory-stock-pill"
+          }
+        >
+          {p.stockQty}
         </span>
-      </div>
-
-      <div className="inventory-card__meta">
-        {[
-          !isCoverProduct(p) && filter !== "COVERS" ? PRODUCT_KIND_LABELS[p.kind] : null,
-          showDetail ? detail : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || null}
       </div>
 
       <div className="inventory-card__stats">
@@ -132,16 +136,18 @@ function InventoryProductCard({
         </div>
       </div>
 
-      <Link className="inventory-card__action" href={`/inventory/${p.id}/stock`}>
-        Stock in
+      <Link className="inventory-card__action" href={`/inventory/${p.id}/stock`} title="Add stock">
+        <PackagePlus size={16} /> Add stock
       </Link>
     </article>
   );
 }
 
 export default function InventoryPage() {
+  const qc = useQueryClient();
   const [filter, setFilter] = useState<InventoryFilter>("ALL");
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const { kind, filters } = queryForFilter(filter);
 
   useEffect(() => {
@@ -153,20 +159,25 @@ export default function InventoryPage() {
     queryFn: () => api.getProducts(page, undefined, kind, PAGE_SIZE, undefined, filters),
   });
 
+  const removeProduct = useMutation({
+    mutationFn: (productId: string) => api.deleteProduct(productId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      setDeleteTarget(null);
+    },
+  });
+
   const products = data?.data ?? [];
   const meta = data?.meta;
   const total = meta?.total ?? products.length;
   const totalPages = meta?.totalPages ?? 1;
-  const showingFrom = total ? Math.min((page - 1) * PAGE_SIZE + 1, total) : 0;
-  const showingTo = total ? Math.min(page * PAGE_SIZE, total) : 0;
-  const isCoversView = filter === "COVERS";
-  const detailHeader = isCoversView ? "Model · Type · Design" : "Details";
-
   return (
     <div className="inventory-page">
       <PageHeader
         title="Inventory"
-        subtitle="Covers, accessories, mobiles, repair parts & more"
+        subtitle="Stock by category"
         action={
           <Link href={addProductHref(filter)} className="inventory-add-link">
             <button type="button">+ Add product</button>
@@ -227,49 +238,64 @@ export default function InventoryPage() {
             <table className="data-list inventory-table">
               <thead>
                 <tr>
-                  <th className="col-name">Name</th>
-                  {!isCoversView && <th className="col-type">Type</th>}
-                  <th className="col-detail">{detailHeader}</th>
+                  <th className="col-product">Product</th>
                   <th className="col-stock">Stock</th>
-                  <th className="col-money">Cost</th>
-                  <th className="col-money">
-                    {filter === "REPAIR_PART" ? "Repair ₹" : "Sell"}
+                  <th className="col-cost">Cost</th>
+                  <th className="col-sell">
+                    {filter === "REPAIR_PART" ? "Repair" : "Sell"}
                   </th>
-                  <th className="col-action"></th>
+                  <th className="col-action" aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
                 {products.map((p) => {
-                  const detail = detailCell(p, filter);
-                  const showDetail = detail !== p.name;
+                  const subline = productSubline(p, filter);
 
                   return (
                     <tr key={p.id}>
-                      <td className="col-name">
-                        <strong className="inventory-name" title={p.name}>
+                      <td className="col-product">
+                        <div className="inventory-product-name" title={p.name}>
                           {p.name}
-                        </strong>
-                        {p.sku && <span className="muted inventory-sku"> ({p.sku})</span>}
-                      </td>
-                      {!isCoversView && (
-                        <td className="col-type">{PRODUCT_KIND_LABELS[p.kind]}</td>
-                      )}
-                      <td className="col-detail">
-                        <span className="inventory-detail" title={detail}>
-                          {showDetail ? detail : "—"}
-                        </span>
+                        </div>
+                        {subline ? (
+                          <div className="inventory-product-sub" title={subline}>
+                            {subline}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="col-stock">
                         <span
-                          className={p.stockQty <= p.minStock ? "badge warning" : "badge ok"}
+                          className={
+                            p.stockQty <= p.minStock
+                              ? "inventory-stock-pill low"
+                              : "inventory-stock-pill"
+                          }
                         >
                           {p.stockQty}
                         </span>
                       </td>
-                      <td className="col-money">{formatMoney(p.buyPrice)}</td>
-                      <td className="col-money">{sellPrice(p)}</td>
+                      <td className="col-cost inventory-money">{formatMoney(p.buyPrice)}</td>
+                      <td className="col-sell inventory-money">{sellPrice(p)}</td>
                       <td className="col-action">
-                        <Link href={`/inventory/${p.id}/stock`}>Stock in</Link>
+                        <div className="row-actions">
+                          <Link
+                            className="inventory-stock-btn"
+                            href={`/inventory/${p.id}/stock`}
+                            title="Add stock"
+                            aria-label={`Add stock for ${p.name}`}
+                          >
+                            <PackagePlus size={16} />
+                          </Link>
+                          <button
+                            type="button"
+                            className="inventory-stock-btn danger"
+                            title="Delete product"
+                            aria-label={`Delete ${p.name}`}
+                            onClick={() => setDeleteTarget({ id: p.id, name: p.name })}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -286,11 +312,11 @@ export default function InventoryPage() {
 
           <div className="inventory-footer">
             <div className="inventory-footer-left muted">
-              Showing {total ? `${showingFrom}-${showingTo}` : "0"} of {total}
+              {total} product{total === 1 ? "" : "s"}
               {isFetching && !isLoading ? " · Updating…" : ""}
             </div>
             <div className="inventory-footer-right">
-              <span className="inventory-pages muted">Page {page} / {totalPages}</span>
+              <span className="inventory-pages muted">{page}/{totalPages}</span>
               <div className="inventory-pages">
                 <button
                   type="button"
@@ -313,6 +339,23 @@ export default function InventoryPage() {
           </div>
         </>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete product?"
+        message={
+          deleteTarget
+            ? `Remove "${deleteTarget.name}" permanently? Stock history will be deleted. Linked sales and repair records will be updated.`
+            : ""
+        }
+        error={removeProduct.error ? (removeProduct.error as Error).message : null}
+        loading={removeProduct.isPending}
+        onCancel={() => {
+          removeProduct.reset();
+          setDeleteTarget(null);
+        }}
+        onConfirm={() => deleteTarget && removeProduct.mutate(deleteTarget.id)}
+      />
     </div>
   );
 }

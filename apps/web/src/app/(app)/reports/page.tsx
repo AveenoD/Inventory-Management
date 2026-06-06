@@ -284,7 +284,7 @@ export default function ReportsPage() {
                   </thead>
                   <tbody>
                     {recent.map((a) => (
-                      <tr key={`${a.at}-${a.type}-${a.title}`}>
+                      <tr key={a.id}>
                         <td>{new Date(a.at).toLocaleString()}</td>
                         <td>
                           <span className={`reports-pill ${a.type.toLowerCase()}`}>{labelType(a.type)}</span>
