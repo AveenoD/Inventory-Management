@@ -36,6 +36,34 @@ function monthIdFromParams(params: Record<string, string | undefined>): string {
   return id;
 }
 
+function mapRechargeEntry(r: {
+  id: string;
+  date: Date;
+  operator: string;
+  entryType: string;
+  amount: { toString(): string };
+  rechargeAmount: { toString(): string } | null;
+  saleProfit: { toString(): string } | null;
+  chillar: { toString(): string } | null;
+  act: { toString(): string } | null;
+  mnp: { toString(): string } | null;
+  note: string | null;
+}) {
+  return {
+    id: r.id,
+    date: r.date.toISOString().slice(0, 10),
+    operator: r.operator,
+    entryType: r.entryType,
+    amount: fmt(d(r.amount)),
+    rechargeAmount: r.rechargeAmount != null ? fmt(d(r.rechargeAmount)) : null,
+    saleProfit: r.saleProfit != null ? fmt(d(r.saleProfit)) : null,
+    chillar: r.chillar != null ? fmt(d(r.chillar)) : null,
+    act: r.act != null ? fmt(d(r.act)) : null,
+    mnp: r.mnp != null ? fmt(d(r.mnp)) : null,
+    note: r.note,
+  };
+}
+
 function parseDate(s: string) {
   return new Date(`${s}T00:00:00.000Z`);
 }
@@ -64,15 +92,7 @@ entriesRouter.get("/recharge-entries", async (req, res, next) => {
       take,
     });
     res.json({
-      data: rows.map((r) => ({
-        id: r.id,
-        date: r.date.toISOString().slice(0, 10),
-        operator: r.operator,
-        entryType: r.entryType,
-        amount: fmt(d(r.amount)),
-        rechargeAmount: r.rechargeAmount != null ? fmt(d(r.rechargeAmount)) : null,
-        note: r.note,
-      })),
+      data: rows.map(mapRechargeEntry),
       meta: { page: q.page, limit: q.limit, total, totalPages },
     });
   } catch (e) {
@@ -99,49 +119,39 @@ entriesRouter.post("/recharge-entries", async (req, res, next) => {
       return;
     }
 
-    const toCreate = amounts.filter((a) => a.amount > 0);
     const faceValue = fmt(d(body.rechargeAmount));
-
-    const created = await prisma.$transaction(
-      toCreate.map((item) =>
-        prisma.rechargeEntry.create({
-          data: {
-            businessMonthId: mid,
-            date,
-            operator: body.operator,
-            entryType: item.entryType,
-            amount: fmt(d(item.amount)),
-            rechargeAmount: faceValue,
-          },
-        }),
-      ),
+    const saleProfit = fmt(d(body.saleProfit));
+    const chillar = fmt(d(body.chillar));
+    const act = fmt(d(body.act));
+    const mnp = fmt(d(body.mnp));
+    const totalAmount = fmt(
+      d(body.saleProfit).plus(d(body.chillar)).plus(d(body.act)).plus(d(body.mnp)),
     );
+    const activeTypes = amounts.filter((a) => a.amount > 0);
+    const entryType =
+      activeTypes.length === 1
+        ? activeTypes[0]!.entryType
+        : activeTypes.length > 1
+          ? "MULTI"
+          : "SALE_PROFIT";
 
-    // Store face value even when no profit lines were entered
-    if (created.length === 0) {
-      const entry = await prisma.rechargeEntry.create({
-        data: {
-          businessMonthId: mid,
-          date,
-          operator: body.operator,
-          entryType: "SALE_PROFIT",
-          amount: fmt(d(0)),
-          rechargeAmount: faceValue,
-        },
-      });
-      created.push(entry);
-    }
+    const entry = await prisma.rechargeEntry.create({
+      data: {
+        businessMonthId: mid,
+        date,
+        operator: body.operator,
+        entryType,
+        amount: totalAmount,
+        rechargeAmount: faceValue,
+        saleProfit,
+        chillar,
+        act,
+        mnp,
+      },
+    });
 
     await rollupRechargeDay(mid, date);
-    res.status(201).json({
-      date: body.date,
-      operator: body.operator,
-      entries: created.map((entry) => ({
-        id: entry.id,
-        entryType: entry.entryType,
-        amount: fmt(d(entry.amount)),
-      })),
-    });
+    res.status(201).json(mapRechargeEntry(entry));
   } catch (e) {
     next(e);
   }

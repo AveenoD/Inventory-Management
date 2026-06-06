@@ -13,7 +13,9 @@ import { FormModal } from "@/components/ui/form-modal";
 import {
   RECHARGE_OPERATORS,
   RECHARGE_AMOUNT_FIELDS,
-  getRechargeEntryTypeLabel,
+  formatRechargeTypeLabel,
+  getRechargeBreakdownParts,
+  rechargeEntryHasType,
   type RechargeOperator,
 } from "@sk-mobile/shared";
 import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
@@ -36,7 +38,18 @@ type RechargeRow = {
   rechargeAmount?: string | null;
   note?: string | null;
   mobileNumber?: string | null;
+  saleProfit?: string | null;
+  chillar?: string | null;
+  act?: string | null;
+  mnp?: string | null;
 };
+
+function formatProfitBreakdown(row: RechargeRow): string {
+  const parts = getRechargeBreakdownParts(row);
+  if (parts.length === 0) return "—";
+  if (parts.length === 1) return formatMoney(parts[0]!.amount);
+  return parts.map((p) => formatMoney(p.amount)).join(" + ");
+}
 
 const PAGE_SIZES = [10, 25, 50] as const;
 
@@ -143,9 +156,9 @@ export default function RechargePage() {
   const filteredEntries = useMemo(() => {
     return entries.filter((e) => {
       if (operatorFilter !== "ALL" && e.operator !== operatorFilter) return false;
-      if (typeFilter !== "ALL" && e.entryType !== typeFilter) return false;
+      if (typeFilter !== "ALL" && !rechargeEntryHasType(e, typeFilter)) return false;
       if (!searchDebounced) return true;
-      const hay = `${e.operator} ${e.entryType} ${e.amount} ${e.date} ${e.note ?? ""}`.toLowerCase();
+      const hay = `${e.operator} ${formatRechargeTypeLabel(e)} ${e.amount} ${e.date} ${e.note ?? ""}`.toLowerCase();
       return hay.includes(searchDebounced);
     });
   }, [entries, operatorFilter, typeFilter, searchDebounced]);
@@ -392,12 +405,12 @@ export default function RechargePage() {
                   </td>
                   <td>{r.operator}</td>
                   <td>
-                    <span className="badge recharge-type">{getRechargeEntryTypeLabel(r.entryType)}</span>
+                    <span className="badge recharge-type">{formatRechargeTypeLabel(r)}</span>
                   </td>
                   <td className="right">
                     {r.rechargeAmount ? formatMoney(r.rechargeAmount) : "—"}
                   </td>
-                  <td className="right">{formatMoney(r.amount)}</td>
+                  <td className="right">{formatProfitBreakdown(r)}</td>
                   <td>
                     <span className="recharge-status">
                       <span className="recharge-status-dot" aria-hidden="true" />

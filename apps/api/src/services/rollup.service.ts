@@ -58,18 +58,48 @@ function emptyRechargeRow() {
   };
 }
 
+function hasRechargeBreakdown(e: {
+  saleProfit: unknown;
+  chillar: unknown;
+  act: unknown;
+  mnp: unknown;
+}) {
+  return e.saleProfit != null || e.chillar != null || e.act != null || e.mnp != null;
+}
+
+function addRechargeAmount(
+  row: ReturnType<typeof emptyRechargeRow>,
+  operator: string,
+  entryType: string,
+  amount: { toString(): string },
+) {
+  const field = RECHARGE_FIELD[operator]?.[entryType];
+  if (field) {
+    row[field as keyof typeof row] = Number(
+      fmt(d(row[field as keyof typeof row]).plus(d(amount))),
+    );
+  }
+}
+
 export async function rollupRechargeDay(businessMonthId: string, date: Date) {
   const entries = await prisma.rechargeEntry.findMany({
     where: { businessMonthId, date },
   });
   const row = emptyRechargeRow();
   for (const e of entries) {
-    const field = RECHARGE_FIELD[e.operator]?.[e.entryType];
-    if (field) {
-      // Keep Decimal precision (avoid float drift)
-      row[field as keyof typeof row] = Number(
-        fmt(d(row[field as keyof typeof row]).plus(d(e.amount))),
-      );
+    if (hasRechargeBreakdown(e)) {
+      const breakdown: Array<[string, { toString(): string } | null]> = [
+        ["SALE_PROFIT", e.saleProfit],
+        ["CHILLAR", e.chillar],
+        ["ACT", e.act],
+        ["MNP", e.mnp],
+      ];
+      for (const [entryType, amount] of breakdown) {
+        if (amount == null || d(amount).isZero()) continue;
+        addRechargeAmount(row, e.operator, entryType, amount);
+      }
+    } else {
+      addRechargeAmount(row, e.operator, e.entryType, e.amount);
     }
   }
   const total = rechargeTotal(row);
