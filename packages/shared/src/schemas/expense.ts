@@ -35,5 +35,5 @@ export const damageDaySchema = z.object({
   repairingAmount: money,
 });
 
-export const bulkShopExpenseSchema = z.object({ entries: z.array(shopExpenseDaySchema) });
-export const bulkDamageSchema = z.object({ entries: z.array(damageDaySchema) });
+export const bulkShopExpenseSchema = z.object({ entries: z.array(shopExpenseDaySchema).max(31) });
+export const bulkDamageSchema = z.object({ entries: z.array(damageDaySchema).max(31) });

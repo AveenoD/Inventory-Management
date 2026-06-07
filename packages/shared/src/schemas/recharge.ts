@@ -25,7 +25,7 @@ export const rechargeDaySchema = z.object({
 });
 
 export const bulkRechargeSchema = z.object({
-  entries: z.array(rechargeDaySchema),
+  entries: z.array(rechargeDaySchema).max(31),
 });
 
 export type RechargeDayInput = z.infer<typeof rechargeDaySchema>;

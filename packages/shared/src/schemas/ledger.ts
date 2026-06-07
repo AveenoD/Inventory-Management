@@ -30,10 +30,10 @@ export const withdrawalSchema = z.object({
   bank: money,
 });
 
-export const bulkPartySchema = z.object({ entries: z.array(partyLedgerSchema) });
-export const bulkUdhharSchema = z.object({ entries: z.array(udhharDaySchema) });
-export const bulkBankSchema = z.object({ entries: z.array(bankBalanceDaySchema) });
-export const bulkWithdrawalSchema = z.object({ entries: z.array(withdrawalSchema) });
+export const bulkPartySchema = z.object({ entries: z.array(partyLedgerSchema).max(31) });
+export const bulkUdhharSchema = z.object({ entries: z.array(udhharDaySchema).max(31) });
+export const bulkBankSchema = z.object({ entries: z.array(bankBalanceDaySchema).max(31) });
+export const bulkWithdrawalSchema = z.object({ entries: z.array(withdrawalSchema).max(31) });
 
 export const createWithdrawalSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

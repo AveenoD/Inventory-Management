@@ -245,7 +245,12 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       kind?: ProductKind,
       limit = 50,
       excludeKinds?: ProductKind[],
-      filters?: { phoneModelId?: string; coverTypeId?: string; segment?: "covers" | "other_accessories" },
+      filters?: {
+        phoneModelId?: string;
+        coverTypeId?: string;
+        coverTypeName?: string;
+        segment?: "covers" | "other_accessories";
+      },
     ) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) q.set("search", search);
@@ -253,6 +258,7 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       if (excludeKinds?.length) q.set("excludeKinds", excludeKinds.join(","));
       if (filters?.phoneModelId) q.set("phoneModelId", filters.phoneModelId);
       if (filters?.coverTypeId) q.set("coverTypeId", filters.coverTypeId);
+      if (filters?.coverTypeName) q.set("coverTypeName", filters.coverTypeName);
       if (filters?.segment) q.set("segment", filters.segment);
       return request<PaginatedResponse<ProductDto>>(`/api/v1/inventory/products?${q}`);
     },
@@ -287,10 +293,12 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "POST",
         body: JSON.stringify({ name }),
       }),
-    getCoverTypes: (phoneModelId: string) =>
-      request<{ data: CoverTypeDto[] }>(
-        `/api/v1/inventory/cover-types?${new URLSearchParams({ phoneModelId })}`,
-      ),
+    getCoverTypes: (phoneModelId?: string) => {
+      const q = phoneModelId
+        ? `?${new URLSearchParams({ phoneModelId })}`
+        : "";
+      return request<{ data: CoverTypeDto[] }>(`/api/v1/inventory/cover-types${q}`);
+    },
     createCoverType: (phoneModelId: string, name: string) =>
       request<CoverTypeDto>("/api/v1/inventory/cover-types", {
         method: "POST",
@@ -300,6 +308,11 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       request<{ data: Array<{ id: string; name: string; stockQty: number; minStock: number }> }>(
         "/api/v1/inventory/products/low-stock",
       ),
+    getCoverProductStats: () =>
+      request<{
+        byModel: Array<{ phoneModelId: string; count: number }>;
+        byType: Array<{ name: string; count: number }>;
+      }>("/api/v1/inventory/products/covers-stats"),
     createProduct: (data: CreateProductInput) =>
       request<ProductDto>("/api/v1/inventory/products", {
         method: "POST",
@@ -307,6 +320,11 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       }),
     getProduct: (id: string) =>
       request<ProductDto>(`/api/v1/inventory/products/${id}`),
+    updateProduct: (id: string, data: Partial<CreateProductInput>) =>
+      request<ProductDto>(`/api/v1/inventory/products/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     deleteProduct: (id: string) =>
       request<void>(`/api/v1/inventory/products/${id}`, { method: "DELETE" }),
     stockIn: (data: StockInInput) =>
@@ -343,6 +361,11 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
     createRechargeEntry: (monthId: string, data: RechargeBatchInput) =>
       request(`/api/v1/months/${monthId}/recharge-entries`, {
         method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateRechargeEntry: (monthId: string, entryId: string, data: RechargeBatchInput) =>
+      request(`/api/v1/months/${monthId}/recharge-entries/${entryId}`, {
+        method: "PATCH",
         body: JSON.stringify(data),
       }),
     deleteRechargeEntry: (monthId: string, entryId: string) =>

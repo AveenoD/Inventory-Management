@@ -325,6 +325,7 @@ model Product {
   @@index([userId])
   @@index([userId, name])
   @@index([userId, kind])
+  @@index([userId, isActive])
   @@index([phoneModelId])
 }
 
@@ -341,6 +342,7 @@ model StockMovement {
   createdAt DateTime          @default(now())
 
   @@index([productId, createdAt])
+  @@index([saleId])
 }
 
 model Sale {
@@ -391,9 +393,11 @@ model RechargeEntry {
   act             Decimal?      @db.Decimal(14, 2)
   mnp             Decimal?      @db.Decimal(14, 2)
   note            String?
+  isActive        Boolean       @default(true)
   createdAt       DateTime      @default(now())
 
   @@index([businessMonthId, date])
+  @@index([businessMonthId, date, isActive])
 }
 
 model TransferEntry {
@@ -433,6 +437,7 @@ model RepairJob {
 
   @@index([businessMonthId, date])
   @@index([businessMonthId, status])
+  @@index([businessMonthId, status, deliveredAt])
 }
 
 model RepairJobPart {

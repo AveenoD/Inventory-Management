@@ -21,6 +21,6 @@ export const extraIncomeSchema = z.object({
   amount: money,
 });
 
-export const bulkRepairSchema = z.object({ entries: z.array(repairDaySchema) });
-export const bulkMobileSchema = z.object({ entries: z.array(mobileAccessoryDaySchema) });
-export const bulkExtraIncomeSchema = z.object({ entries: z.array(extraIncomeSchema) });
+export const bulkRepairSchema = z.object({ entries: z.array(repairDaySchema).max(31) });
+export const bulkMobileSchema = z.object({ entries: z.array(mobileAccessoryDaySchema).max(31) });
+export const bulkExtraIncomeSchema = z.object({ entries: z.array(extraIncomeSchema).max(31) });

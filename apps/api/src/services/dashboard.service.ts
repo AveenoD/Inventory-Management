@@ -3,25 +3,26 @@ import { poolBatch } from "../lib/pool-batch.js";
 import { prisma } from "../lib/prisma.js";
 import { d, fmt, sum } from "../lib/decimal.js";
 
+const inflightDashboard = new Map<string, Promise<DashboardResponse>>();
+
 export async function getDashboard(businessMonthId: string): Promise<DashboardResponse> {
+  const existing = inflightDashboard.get(businessMonthId);
+  if (existing) return existing;
+
+  const promise = computeDashboard(businessMonthId).finally(() => {
+    inflightDashboard.delete(businessMonthId);
+  });
+  inflightDashboard.set(businessMonthId, promise);
+  return promise;
+}
+
+async function computeDashboard(businessMonthId: string): Promise<DashboardResponse> {
   const month = await prisma.businessMonth.findUniqueOrThrow({
     where: { id: businessMonthId },
   });
 
-  const [
-    moneyAgg,
-    rechargeAgg,
-    repairAgg,
-    mobileAgg,
-    extraAgg,
-    expenseAgg,
-    damageAgg,
-    withdrawalAgg,
-    udhharAgg,
-    partyAgg,
-    bankDays,
-    repairJobs,
-  ] = await poolBatch([
+  const batch = await poolBatch(
+    [
     () =>
       prisma.moneyTransferDay.aggregate({
         where: { businessMonthId },
@@ -83,7 +84,23 @@ export async function getDashboard(businessMonthId: string): Promise<DashboardRe
         where: { businessMonthId },
         _sum: { jobCount: true },
       }),
-  ]);
+    ],
+    3,
+  );
+
+  type SumAgg = { _sum: Record<string, { toString(): string } | null> };
+  const moneyAgg = batch[0] as SumAgg;
+  const rechargeAgg = batch[1] as SumAgg;
+  const repairAgg = batch[2] as SumAgg;
+  const mobileAgg = batch[3] as SumAgg;
+  const extraAgg = batch[4] as SumAgg;
+  const expenseAgg = batch[5] as SumAgg;
+  const damageAgg = batch[6] as SumAgg;
+  const withdrawalAgg = batch[7] as SumAgg;
+  const udhharAgg = batch[8] as SumAgg;
+  const partyAgg = batch[9] as SumAgg;
+  const bankDays = batch[10] as Array<{ total: { toString(): string } }>;
+  const repairJobs = batch[11] as SumAgg;
 
   const openingBalance = d(month.openingBalance);
   const moneyTransferTotal = d(moneyAgg._sum.total ?? 0);

@@ -78,16 +78,22 @@ export const api = {
     kind?: import("@sk-mobile/shared").ProductKind,
     limit?: number,
     excludeKinds?: import("@sk-mobile/shared").ProductKind[],
-    filters?: { phoneModelId?: string; coverTypeId?: string; segment?: "covers" | "other_accessories" },
+    filters?: {
+      phoneModelId?: string;
+      coverTypeId?: string;
+      coverTypeName?: string;
+      segment?: "covers" | "other_accessories";
+    },
   ) => withAuth(() => client.getProducts(page, search, kind, limit, excludeKinds, filters)),
   getAllProducts: (search?: string, kind?: import("@sk-mobile/shared").ProductKind) =>
     withAuth(() => client.getAllProducts(search, kind)),
   getPhoneModels: () => withAuth(() => client.getPhoneModels()),
   createPhoneModel: (name: string) => withAuth(() => client.createPhoneModel(name)),
-  getCoverTypes: (phoneModelId: string) => withAuth(() => client.getCoverTypes(phoneModelId)),
+  getCoverTypes: (phoneModelId?: string) => withAuth(() => client.getCoverTypes(phoneModelId)),
   createCoverType: (phoneModelId: string, name: string) =>
     withAuth(() => client.createCoverType(phoneModelId, name)),
   getLowStock: () => withAuth(() => client.getLowStock()),
+  getCoverProductStats: () => withAuth(() => client.getCoverProductStats()),
   createProduct: (data: Parameters<typeof client.createProduct>[0]) =>
     withAuth(() => client.createProduct(data)),
   getProduct: (id: string) =>
@@ -96,6 +102,8 @@ export const api = {
         `/api/v1/inventory/products/${id}`,
       ),
     ),
+  updateProduct: (id: string, data: Parameters<typeof client.updateProduct>[1]) =>
+    withAuth(() => client.updateProduct(id, data)),
   deleteProduct: (id: string) =>
     withAuth(() =>
       requestJson<void>(`/api/v1/inventory/products/${id}`, { method: "DELETE" }),
@@ -124,6 +132,11 @@ export const api = {
     monthId: string,
     data: Parameters<typeof client.createRechargeEntry>[1],
   ) => withAuth(() => client.createRechargeEntry(monthId, data)),
+  updateRechargeEntry: (
+    monthId: string,
+    entryId: string,
+    data: Parameters<typeof client.updateRechargeEntry>[2],
+  ) => withAuth(() => client.updateRechargeEntry(monthId, entryId, data)),
   deleteRechargeEntry: (monthId: string, entryId: string) =>
     withAuth(() => client.deleteRechargeEntry(monthId, entryId)),
   getTransferEntries: (monthId: string, page?: number, date?: string) =>

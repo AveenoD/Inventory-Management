@@ -245,22 +245,25 @@ dailyRouter.put("/extra-income/bulk", async (req, res, next) => {
   try {
     await guardMonth(req, req.user!.userId);
     const { entries } = bulkExtraIncomeSchema.parse(req.body);
-    for (const e of entries) {
-      if (d(e.amount).eq(0) && !e.description) continue;
-      await prisma.extraIncomeEntry.deleteMany({
-        where: { businessMonthId: monthId(req), date: parseDate(e.date) },
-      });
-      if (d(e.amount).gt(0) || e.description) {
-        await prisma.extraIncomeEntry.create({
-          data: {
-            businessMonthId: monthId(req),
-            date: parseDate(e.date),
-            description: e.description,
-            amount: e.amount,
-          },
+    const mid = monthId(req);
+    await prisma.$transaction(async (tx) => {
+      for (const e of entries) {
+        if (d(e.amount).eq(0) && !e.description) continue;
+        await tx.extraIncomeEntry.deleteMany({
+          where: { businessMonthId: mid, date: parseDate(e.date) },
         });
+        if (d(e.amount).gt(0) || e.description) {
+          await tx.extraIncomeEntry.create({
+            data: {
+              businessMonthId: mid,
+              date: parseDate(e.date),
+              description: e.description,
+              amount: e.amount,
+            },
+          });
+        }
       }
-    }
+    });
     res.json({ ok: true, count: entries.length });
   } catch (e) {
     next(e);
@@ -729,25 +732,28 @@ dailyRouter.put("/withdrawals/bulk", async (req, res, next) => {
   try {
     await guardMonth(req, req.user!.userId);
     const { entries } = bulkWithdrawalSchema.parse(req.body);
-    for (const e of entries) {
-      const total = withdrawalTotal(e);
-      if (d(total).eq(0) && !e.description) continue;
-      await prisma.withdrawal.deleteMany({
-        where: { businessMonthId: monthId(req), date: parseDate(e.date) },
-      });
-      if (d(total).gt(0)) {
-        await prisma.withdrawal.create({
-          data: {
-            businessMonthId: monthId(req),
-            date: parseDate(e.date),
-            description: e.description,
-            cash: e.cash,
-            bank: e.bank,
-            total,
-          },
+    const mid = monthId(req);
+    await prisma.$transaction(async (tx) => {
+      for (const e of entries) {
+        const total = withdrawalTotal(e);
+        if (d(total).eq(0) && !e.description) continue;
+        await tx.withdrawal.deleteMany({
+          where: { businessMonthId: mid, date: parseDate(e.date) },
         });
+        if (d(total).gt(0)) {
+          await tx.withdrawal.create({
+            data: {
+              businessMonthId: mid,
+              date: parseDate(e.date),
+              description: e.description,
+              cash: e.cash,
+              bank: e.bank,
+              total,
+            },
+          });
+        }
       }
-    }
+    });
     res.json({ ok: true, count: entries.length });
   } catch (e) {
     next(e);

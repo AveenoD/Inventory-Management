@@ -22,7 +22,7 @@ export const moneyTransferDaySchema = z.object({
 });
 
 export const bulkMoneyTransferSchema = z.object({
-  entries: z.array(moneyTransferDaySchema),
+  entries: z.array(moneyTransferDaySchema).max(31),
 });
 
 export type MoneyTransferDayInput = z.infer<typeof moneyTransferDaySchema>;

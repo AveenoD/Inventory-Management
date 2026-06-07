@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   REPAIR_STATUS_LABELS,
@@ -16,9 +16,8 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Trash2 } from "lucide-react";
-import { StatCard } from "@/components/ui/stat-card";
-import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
+import { Calendar, Clock, IndianRupee, Search, Trash2, Wrench } from "lucide-react";
+import { formatMoney, parseMoneyInput } from "@/lib/format";
 
 type Tab = "all" | "active" | "pending" | "delivered" | "unrepairable";
 
@@ -49,6 +48,9 @@ export default function RepairPage() {
   const qc = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const [tab, setTab] = useState<Tab>("all");
+  const [filterDate, setFilterDate] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerSearchDebounced, setCustomerSearchDebounced] = useState("");
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [actionJob, setActionJob] = useState<RepairJobDto | null>(null);
   const [actionKind, setActionKind] = useState<
@@ -71,43 +73,58 @@ export default function RepairPage() {
   const [deleteTarget, setDeleteTarget] = useState<RepairJobDto | null>(null);
 
   const tabDef = TABS.find((t) => t.key === tab)!;
+
+  useEffect(() => {
+    const t = setTimeout(() => setCustomerSearchDebounced(customerSearch.trim().toLowerCase()), 250);
+    return () => clearTimeout(t);
+  }, [customerSearch]);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["repair-jobs", monthId, tabDef.status ?? "all"],
+    queryKey: ["repair-jobs", monthId, tabDef.status ?? "all", filterDate],
     queryFn: () =>
-      api.getRepairJobs(monthId!, 1, tabDef.status ? { status: tabDef.status } : undefined),
+      api.getRepairJobs(monthId!, 1, {
+        ...(tabDef.status && { status: tabDef.status }),
+        ...(filterDate && { date: filterDate }),
+      }),
     enabled: !!monthId,
   });
 
   const { data: repairPartsData } = useQuery({
     queryKey: ["products", "REPAIR_PART"],
-    queryFn: () => api.getProducts(1, undefined, "REPAIR_PART", 200),
+    queryFn: () => api.getProducts(1, undefined, "REPAIR_PART", 100),
   });
 
   const repairParts = repairPartsData?.data ?? [];
 
-  const { data: pendingData } = useQuery({
-    queryKey: ["repair-jobs", monthId, "REPAIRED_PENDING_PICKUP"],
-    queryFn: () =>
-      api.getRepairJobs(monthId!, 1, { status: "REPAIRED_PENDING_PICKUP" }),
+  const { data: todayData } = useQuery({
+    queryKey: ["today"],
+    queryFn: () => api.getToday(),
     enabled: !!monthId,
   });
 
   const jobs: RepairJobDto[] = data?.data ?? [];
   const filteredJobs = useMemo(() => {
-    if (tab !== "active") return jobs;
-    return jobs.filter(
-      (j) => j.status === "RECEIVED" || j.status === "IN_PROGRESS",
-    );
-  }, [jobs, tab]);
+    let list = jobs;
+    if (tab === "active") {
+      list = list.filter((j) => j.status === "RECEIVED" || j.status === "IN_PROGRESS");
+    }
+    if (customerSearchDebounced) {
+      list = list.filter((j) =>
+        (j.customerName ?? "").toLowerCase().includes(customerSearchDebounced),
+      );
+    }
+    return list;
+  }, [jobs, tab, customerSearchDebounced]);
 
-  const pendingSummary = useMemo(() => {
-    const pending = pendingData?.data ?? [];
-    const balance = pending.reduce(
-      (s, j) => s + parseMoneyInput(j.customerCharge || j.salePrice || "0"),
-      0,
-    );
-    return { count: pending.length, balance };
-  }, [pendingData]);
+  const hasActiveFilters = !!filterDate || customerSearchDebounced.length > 0;
+
+  const pendingSummary = useMemo(
+    () => ({
+      count: todayData?.repairPendingCount ?? 0,
+      balance: parseMoneyInput(todayData?.repairPendingBalance ?? "0"),
+    }),
+    [todayData],
+  );
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["repair-jobs", monthId] });
@@ -212,41 +229,103 @@ export default function RepairPage() {
 
   return (
     <MonthGate>
-      <div>
+      <div className="repair-page">
         <PageHeader
           title="Repair"
           subtitle="Intake → repair → pickup → profit on delivery"
           action={
-            <button type="button" onClick={() => setIntakeOpen(true)}>
-              + New intake
-            </button>
+            <div className="repair-top-actions">
+              <div className="recharge-search repair-search">
+                <Search size={16} />
+                <input
+                  placeholder="Search customer…"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  aria-label="Search by customer name"
+                />
+              </div>
+              <button type="button" onClick={() => setIntakeOpen(true)}>
+                + New intake
+              </button>
+            </div>
           }
         />
 
-        <div className="grid-cards" style={{ marginBottom: "1rem" }}>
-          <StatCard
-            label="Pending pickup"
-            value={pendingSummary.count}
-            tone={pendingSummary.count > 0 ? "warning" : undefined}
-          />
-          <StatCard
-            label="Pending balance"
-            value={formatMoney(String(pendingSummary.balance))}
-            tone={pendingSummary.balance > 0 ? "warning" : undefined}
-          />
+        <div className="recharge-stats repair-stats">
+          <div className="recharge-stat card amber">
+            <div className="recharge-stat-icon amber">
+              <Clock size={18} />
+            </div>
+            <div className="recharge-stat-body">
+              <div className="stat-label">Pending pickup</div>
+              <div className="stat-value">{pendingSummary.count}</div>
+              <div className="muted">Ready for customer</div>
+            </div>
+          </div>
+
+          <div className="recharge-stat card purple">
+            <div className="recharge-stat-icon purple">
+              <IndianRupee size={18} />
+            </div>
+            <div className="recharge-stat-body">
+              <div className="stat-label">Pending balance</div>
+              <div className="stat-value">{formatMoney(String(pendingSummary.balance))}</div>
+              <div className="muted">To collect on pickup</div>
+            </div>
+          </div>
+
+          <div className="recharge-stat card green">
+            <div className="recharge-stat-icon green">
+              <Wrench size={18} />
+            </div>
+            <div className="recharge-stat-body">
+              <div className="stat-label">Today&apos;s profit</div>
+              <div className="stat-value positive">
+                {formatMoney(todayData?.repairProfit ?? "0")}
+              </div>
+              <div className="muted">
+                {todayData?.repairDelivered ?? 0} delivered today
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="inventory-tabs" style={{ marginBottom: "1rem" }}>
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={tab === t.key ? "tab active" : "tab"}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="repair-filter-card card">
+          <div className="inventory-tabs repair-tabs">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={tab === t.key ? "tab active" : "tab"}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="repair-filter-date">
+            <div className="recharge-date">
+              <span className="recharge-date-icon" aria-hidden="true">
+                <Calendar size={16} />
+              </span>
+              <input
+                id="repair-filter-date"
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                aria-label="Filter by date"
+              />
+            </div>
+            {filterDate ? (
+              <button
+                type="button"
+                className="secondary repair-clear-date"
+                onClick={() => setFilterDate("")}
+              >
+                All dates
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {isLoading && <PageLoader message="Loading jobs…" />}
@@ -260,18 +339,35 @@ export default function RepairPage() {
         )}
         {!isLoading && !error && filteredJobs.length === 0 && (
           <EmptyState
-            title="No repair jobs"
-            description="Register a phone when the customer drops it off for repair."
+            title={hasActiveFilters ? "No matching jobs" : "No repair jobs"}
+            description={
+              hasActiveFilters
+                ? "Try a different date or customer name, or clear filters."
+                : "Register a phone when the customer drops it off for repair."
+            }
             action={
-              <button type="button" onClick={() => setIntakeOpen(true)}>
-                New intake
-              </button>
+              hasActiveFilters ? (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setFilterDate("");
+                    setCustomerSearch("");
+                  }}
+                >
+                  Clear filters
+                </button>
+              ) : (
+                <button type="button" onClick={() => setIntakeOpen(true)}>
+                  New intake
+                </button>
+              )
             }
           />
         )}
         {!isLoading && !error && filteredJobs.length > 0 && (
-          <div className="data-table-wrap">
-            <table className="data-list">
+          <div className="data-table-wrap repair-table-wrap">
+            <table className="data-list repair-table">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -296,15 +392,13 @@ export default function RepairPage() {
                       </span>
                     </td>
                     <td>
-                      {r.customerName ?? "—"}
+                      <div className="repair-customer">{r.customerName ?? "—"}</div>
                       {r.customerPhone ? (
-                        <div className="muted" style={{ fontSize: "0.85em" }}>
-                          {r.customerPhone}
-                        </div>
+                        <div className="repair-customer-phone muted">{r.customerPhone}</div>
                       ) : null}
                     </td>
-                    <td>{r.device ?? "—"}</td>
-                    <td style={{ maxWidth: 180 }}>{r.issueDescription ?? "—"}</td>
+                    <td className="repair-device">{r.device ?? "—"}</td>
+                    <td className="repair-issue">{r.issueDescription ?? "—"}</td>
                     <td>
                       {r.partsUsed?.length
                         ? r.partsUsed.map((p) => p.productName).join(", ")
@@ -328,7 +422,7 @@ export default function RepairPage() {
                           : "—"}
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      <div className="repair-row-actions">
                         {r.status === "RECEIVED" && (
                           <>
                             <button

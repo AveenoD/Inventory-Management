@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   rechargeBatchSchema,
+  type RechargeBatchInput,
   transferEntrySchema,
   repairIntakeSchema,
   repairJobSchema,
@@ -74,6 +75,47 @@ async function guard(req: { params: Record<string, string | undefined> }, userId
   return assertMonthAccess(monthIdFromParams(req.params), userId);
 }
 
+function buildRechargeEntryData(body: RechargeBatchInput) {
+  const amounts: Array<{ entryType: "SALE_PROFIT" | "CHILLAR" | "ACT" | "MNP"; amount: number }> = [
+    { entryType: "SALE_PROFIT", amount: body.saleProfit },
+    { entryType: "CHILLAR", amount: body.chillar },
+    { entryType: "ACT", amount: body.act },
+    { entryType: "MNP", amount: body.mnp },
+  ];
+
+  if (body.rechargeAmount <= 0) {
+    throw new Error("Enter the actual recharge amount");
+  }
+
+  const faceValue = fmt(d(body.rechargeAmount));
+  const saleProfit = fmt(d(body.saleProfit));
+  const chillar = fmt(d(body.chillar));
+  const act = fmt(d(body.act));
+  const mnp = fmt(d(body.mnp));
+  const totalAmount = fmt(
+    d(body.saleProfit).plus(d(body.chillar)).plus(d(body.act)).plus(d(body.mnp)),
+  );
+  const activeTypes = amounts.filter((a) => a.amount > 0);
+  const entryType =
+    activeTypes.length === 1
+      ? activeTypes[0]!.entryType
+      : activeTypes.length > 1
+        ? "MULTI"
+        : "SALE_PROFIT";
+
+  return {
+    date: parseDate(body.date),
+    operator: body.operator,
+    entryType,
+    amount: totalAmount,
+    rechargeAmount: faceValue,
+    saleProfit,
+    chillar,
+    act,
+    mnp,
+  };
+}
+
 // Recharge entries
 entriesRouter.get("/recharge-entries", async (req, res, next) => {
   try {
@@ -83,6 +125,7 @@ entriesRouter.get("/recharge-entries", async (req, res, next) => {
     const date = req.query.date as string | undefined;
     const where = {
       businessMonthId: mid,
+      isActive: true,
       ...(date && { date: parseDate(date) }),
     };
     const total = await prisma.rechargeEntry.count({ where });
@@ -107,55 +150,51 @@ entriesRouter.post("/recharge-entries", async (req, res, next) => {
     await guard(req, req.user!.userId);
     const mid = monthIdFromParams(req.params);
     const body = rechargeBatchSchema.parse(req.body);
-    const date = parseDate(body.date);
-
-    const amounts: Array<{ entryType: "SALE_PROFIT" | "CHILLAR" | "ACT" | "MNP"; amount: number }> = [
-      { entryType: "SALE_PROFIT", amount: body.saleProfit },
-      { entryType: "CHILLAR", amount: body.chillar },
-      { entryType: "ACT", amount: body.act },
-      { entryType: "MNP", amount: body.mnp },
-    ];
-
-    if (body.rechargeAmount <= 0) {
-      res.status(400).json({ error: "Enter the actual recharge amount" });
-      return;
-    }
-
-    const faceValue = fmt(d(body.rechargeAmount));
-    const saleProfit = fmt(d(body.saleProfit));
-    const chillar = fmt(d(body.chillar));
-    const act = fmt(d(body.act));
-    const mnp = fmt(d(body.mnp));
-    const totalAmount = fmt(
-      d(body.saleProfit).plus(d(body.chillar)).plus(d(body.act)).plus(d(body.mnp)),
-    );
-    const activeTypes = amounts.filter((a) => a.amount > 0);
-    const entryType =
-      activeTypes.length === 1
-        ? activeTypes[0]!.entryType
-        : activeTypes.length > 1
-          ? "MULTI"
-          : "SALE_PROFIT";
+    const entryData = buildRechargeEntryData(body);
 
     const entry = await prisma.rechargeEntry.create({
       data: {
         businessMonthId: mid,
-        date,
-        operator: body.operator,
-        entryType,
-        amount: totalAmount,
-        rechargeAmount: faceValue,
-        saleProfit,
-        chillar,
-        act,
-        mnp,
+        ...entryData,
       },
     });
 
-    await rollupRechargeDay(mid, date);
+    await rollupRechargeDay(mid, entryData.date);
     res.status(201).json(mapRechargeEntry(entry));
   } catch (e) {
-    next(e);
+    const msg = e instanceof Error ? e.message : "Create failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+entriesRouter.patch("/recharge-entries/:entryId", async (req, res, next) => {
+  try {
+    await guard(req, req.user!.userId);
+    const mid = monthIdFromParams(req.params);
+    const body = rechargeBatchSchema.parse(req.body);
+    const existing = await prisma.rechargeEntry.findFirst({
+      where: { id: req.params.entryId, businessMonthId: mid, isActive: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const entryData = buildRechargeEntryData(body);
+    const entry = await prisma.rechargeEntry.update({
+      where: { id: existing.id },
+      data: entryData,
+    });
+
+    const dates = new Set([existing.date.toISOString(), entryData.date.toISOString()]);
+    for (const iso of dates) {
+      await rollupRechargeDay(mid, new Date(iso));
+    }
+
+    res.json(mapRechargeEntry(entry));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Update failed";
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -164,14 +203,17 @@ entriesRouter.delete("/recharge-entries/:entryId", async (req, res, next) => {
     await guard(req, req.user!.userId);
     const mid = monthIdFromParams(req.params);
     const entry = await prisma.rechargeEntry.findFirst({
-      where: { id: req.params.entryId, businessMonthId: mid },
+      where: { id: req.params.entryId, businessMonthId: mid, isActive: true },
     });
     if (!entry) {
       res.status(404).json({ error: "Not found" });
       return;
     }
     const date = entry.date;
-    await prisma.rechargeEntry.delete({ where: { id: entry.id } });
+    await prisma.rechargeEntry.update({
+      where: { id: entry.id },
+      data: { isActive: false },
+    });
     await rollupRechargeDay(mid, date);
     res.status(204).end();
   } catch (e) {

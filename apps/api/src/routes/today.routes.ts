@@ -9,6 +9,8 @@ import { getDashboard } from "../services/dashboard.service.js";
 export const todayRouter = Router();
 todayRouter.use(requireAuth);
 
+const POOL_CONCURRENCY = 3;
+
 function prevMonthYearMonth(year: number, month: number) {
   if (month === 1) return { year: year - 1, month: 12 };
   return { year, month: month - 1 };
@@ -31,70 +33,115 @@ todayRouter.get("/", async (req, res, next) => {
 
     const prev = prevMonthYearMonth(month.year, month.month);
 
-    const [
-      sales,
-      rechargeEntries,
-      transferEntries,
-      deliveredToday,
-      pendingPickup,
-      undeliveredAll,
-      activeRepairs,
-      lowStockItems,
-      lowStockCount,
-      salesAgg,
-      stockAgg,
-      productCount,
-      prevMonthRecord,
-      monthDashboard,
-    ] = await poolBatch([
-      () =>
-        prisma.sale.findMany({
-          where: { userId, date },
-          orderBy: { createdAt: "desc" },
-        }),
-      () =>
-        prisma.rechargeEntry.findMany({
-          where: { businessMonthId: month.id, date },
-          orderBy: { createdAt: "desc" },
-        }),
-      () =>
-        prisma.transferEntry.findMany({
-          where: { businessMonthId: month.id, date },
-          orderBy: { createdAt: "desc" },
-        }),
-      () =>
-        prisma.repairJob.findMany({
-          where: {
-            businessMonthId: month.id,
-            status: "DELIVERED",
-            deliveredAt: date,
-          },
-          orderBy: { updatedAt: "desc" },
-        }),
-      () =>
-        prisma.repairJob.findMany({
-          where: {
-            businessMonthId: month.id,
-            status: "REPAIRED_PENDING_PICKUP",
-          },
-          orderBy: { updatedAt: "desc" },
-        }),
-      () =>
-        prisma.repairJob.count({
-          where: {
-            status: "REPAIRED_PENDING_PICKUP",
-            businessMonth: { userId },
-          },
-        }),
-      () =>
-        prisma.repairJob.count({
-          where: {
-            businessMonthId: month.id,
-            status: { in: ["RECEIVED", "IN_PROGRESS", "REPAIRED_PENDING_PICKUP"] },
-          },
-        }),
-      () =>
-        prisma.$queryRaw<Array<{ id: string; name: string; stockQty: number; minStock: number }>>`
+    const batch = await poolBatch(
+      [
+        () =>
+          prisma.sale.aggregate({
+            where: { userId, date },
+            _sum: { total: true, totalCost: true },
+            _count: { _all: true },
+          }),
+        () =>
+          prisma.sale.findMany({
+            where: { userId, date },
+            orderBy: { createdAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              createdAt: true,
+              customerName: true,
+              total: true,
+            },
+          }),
+        () =>
+          prisma.rechargeEntry.aggregate({
+            where: { businessMonthId: month.id, date, isActive: true },
+            _sum: { amount: true },
+            _count: { _all: true },
+          }),
+        () =>
+          prisma.rechargeEntry.findMany({
+            where: { businessMonthId: month.id, date, isActive: true },
+            orderBy: { createdAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              createdAt: true,
+              operator: true,
+              note: true,
+              amount: true,
+            },
+          }),
+        () =>
+          prisma.transferEntry.aggregate({
+            where: { businessMonthId: month.id, date },
+            _sum: { amount: true },
+            _count: { _all: true },
+          }),
+        () =>
+          prisma.transferEntry.findMany({
+            where: { businessMonthId: month.id, date },
+            orderBy: { createdAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              createdAt: true,
+              serviceKey: true,
+              note: true,
+              amount: true,
+            },
+          }),
+        () =>
+          prisma.repairJob.aggregate({
+            where: {
+              businessMonthId: month.id,
+              status: "DELIVERED",
+              deliveredAt: date,
+            },
+            _sum: { profit: true },
+            _count: { _all: true },
+          }),
+        () =>
+          prisma.repairJob.findMany({
+            where: {
+              businessMonthId: month.id,
+              status: "DELIVERED",
+              deliveredAt: date,
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              updatedAt: true,
+              device: true,
+              salePrice: true,
+            },
+          }),
+        () =>
+          prisma.repairJob.aggregate({
+            where: {
+              businessMonthId: month.id,
+              status: "REPAIRED_PENDING_PICKUP",
+            },
+            _sum: { salePrice: true },
+            _count: { _all: true },
+          }),
+        () =>
+          prisma.repairJob.count({
+            where: {
+              status: "REPAIRED_PENDING_PICKUP",
+              businessMonth: { userId },
+            },
+          }),
+        () =>
+          prisma.repairJob.count({
+            where: {
+              businessMonthId: month.id,
+              status: { in: ["RECEIVED", "IN_PROGRESS", "REPAIRED_PENDING_PICKUP"] },
+            },
+          }),
+        () =>
+          prisma.$queryRaw<Array<{ id: string; name: string; stockQty: number; minStock: number }>>`
           SELECT "id", "name", "stockQty", "minStock"
           FROM "Product"
           WHERE "userId" = ${userId}
@@ -103,44 +150,99 @@ todayRouter.get("/", async (req, res, next) => {
           ORDER BY ("stockQty" - "minStock") ASC, "name" ASC
           LIMIT 5
         `,
-      () =>
-        prisma
-          .$queryRaw<[{ count: bigint }]>`
+        () =>
+          prisma
+            .$queryRaw<[{ count: bigint }]>`
             SELECT COUNT(*)::bigint AS count
             FROM "Product"
             WHERE "userId" = ${userId}
               AND "isActive" = true
               AND "stockQty" <= "minStock"
           `
-          .then((rows) => Number(rows[0]?.count ?? 0)),
-      () =>
-        prisma.sale.groupBy({
-          by: ["date"],
-          where: { userId, date: { gte: start7, lte: date } },
-          _sum: { total: true, totalCost: true },
-        }),
-      () =>
-        prisma.$queryRaw<[{ value: string | null }]>`
+            .then((rows) => Number(rows[0]?.count ?? 0)),
+        () =>
+          prisma.sale.groupBy({
+            by: ["date"],
+            where: { userId, date: { gte: start7, lte: date } },
+            _sum: { total: true, totalCost: true },
+          }),
+        () =>
+          prisma.$queryRaw<[{ value: string | null }]>`
           SELECT COALESCE(SUM("buyPrice" * "stockQty"), 0)::text AS value
           FROM "Product"
           WHERE "userId" = ${userId} AND "isActive" = true
         `,
-      () => prisma.product.count({ where: { userId, isActive: true } }),
-      () =>
-        prisma.businessMonth.findUnique({
-          where: {
-            userId_year_month: { userId, year: prev.year, month: prev.month },
-          },
-        }),
-      () => getDashboard(month.id),
-    ]);
+        () => prisma.product.count({ where: { userId, isActive: true } }),
+        () =>
+          prisma.businessMonth.findUnique({
+            where: {
+              userId_year_month: { userId, year: prev.year, month: prev.month },
+            },
+          }),
+        () => getDashboard(month.id),
+      ],
+      POOL_CONCURRENCY,
+    );
 
-    const salesTotal = sales.reduce((a, s) => a.plus(d(s.total)), d(0));
-    const salesProfit = sales.reduce((a, s) => a.plus(d(s.total).minus(d(s.totalCost))), d(0));
-    const rechargeTotal = rechargeEntries.reduce((a, e) => a.plus(d(e.amount)), d(0));
-    const transferTotal = transferEntries.reduce((a, e) => a.plus(d(e.amount)), d(0));
-    const repairProfit = deliveredToday.reduce((a, j) => a.plus(d(j.profit)), d(0));
-    const repairPendingBalance = pendingPickup.reduce((a, j) => a.plus(d(j.salePrice)), d(0));
+    type DayAgg = { _sum: Record<string, { toString(): string } | null>; _count: { _all: number } };
+    const salesDayAgg = batch[0] as DayAgg;
+    const salesRecent = batch[1] as Array<{
+      id: string;
+      createdAt: Date;
+      customerName: string | null;
+      total: { toString(): string };
+    }>;
+    const rechargeDayAgg = batch[2] as DayAgg;
+    const rechargeRecent = batch[3] as Array<{
+      id: string;
+      createdAt: Date;
+      operator: string;
+      note: string | null;
+      amount: { toString(): string };
+    }>;
+    const transferDayAgg = batch[4] as DayAgg;
+    const transferRecent = batch[5] as Array<{
+      id: string;
+      createdAt: Date;
+      serviceKey: string;
+      note: string | null;
+      amount: { toString(): string };
+    }>;
+    const deliveredDayAgg = batch[6] as DayAgg;
+    const deliveredRecent = batch[7] as Array<{
+      id: string;
+      updatedAt: Date;
+      device: string | null;
+      salePrice: { toString(): string };
+    }>;
+    const pendingPickupAgg = batch[8] as DayAgg;
+    const undeliveredAll = batch[9] as number;
+    const activeRepairs = batch[10] as number;
+    const lowStockItems = batch[11] as Array<{
+      id: string;
+      name: string;
+      stockQty: number;
+      minStock: number;
+    }>;
+    const lowStockCount = batch[12] as number;
+    const salesAgg = batch[13] as Array<{
+      date: Date;
+      _sum: { total: { toString(): string } | null; totalCost: { toString(): string } | null };
+    }>;
+    const stockAgg = batch[14] as [{ value: string | null }];
+    const productCount = batch[15] as number;
+    const prevMonthRecord = batch[16] as { id: string } | null;
+    const monthDashboard = batch[17] as Awaited<ReturnType<typeof getDashboard>>;
+
+    const salesTotal = d(salesDayAgg._sum.total ?? 0);
+    const salesProfit = salesTotal.minus(d(salesDayAgg._sum.totalCost ?? 0));
+    const salesCount = salesDayAgg._count._all;
+    const rechargeTotal = d(rechargeDayAgg._sum.amount ?? 0);
+    const transferTotal = d(transferDayAgg._sum.amount ?? 0);
+    const repairProfit = d(deliveredDayAgg._sum.profit ?? 0);
+    const repairDelivered = deliveredDayAgg._count._all;
+    const repairPendingCount = pendingPickupAgg._count._all;
+    const repairPendingBalance = d(pendingPickupAgg._sum.salePrice ?? 0);
     const todayTotalProfit = salesProfit
       .plus(rechargeTotal)
       .plus(transferTotal)
@@ -164,7 +266,7 @@ todayRouter.get("/", async (req, res, next) => {
     });
 
     const recentActivity = [
-      ...sales.slice(0, 6).map((s) => ({
+      ...salesRecent.map((s) => ({
         id: s.id,
         at: s.createdAt.toISOString(),
         type: "SALE" as const,
@@ -172,7 +274,7 @@ todayRouter.get("/", async (req, res, next) => {
         subtitle: s.customerName ? `Customer: ${s.customerName}` : undefined,
         amount: fmt(d(s.total)),
       })),
-      ...rechargeEntries.slice(0, 6).map((e) => ({
+      ...rechargeRecent.map((e) => ({
         id: e.id,
         at: e.createdAt.toISOString(),
         type: "RECHARGE" as const,
@@ -180,7 +282,7 @@ todayRouter.get("/", async (req, res, next) => {
         subtitle: e.note ?? undefined,
         amount: fmt(d(e.amount)),
       })),
-      ...transferEntries.slice(0, 6).map((e) => ({
+      ...transferRecent.map((e) => ({
         id: e.id,
         at: e.createdAt.toISOString(),
         type: "TRANSFER" as const,
@@ -188,7 +290,7 @@ todayRouter.get("/", async (req, res, next) => {
         subtitle: e.note ?? undefined,
         amount: fmt(d(e.amount)),
       })),
-      ...deliveredToday.slice(0, 6).map((j) => ({
+      ...deliveredRecent.map((j) => ({
         id: j.id,
         at: j.updatedAt.toISOString(),
         type: "REPAIR" as const,
@@ -216,13 +318,13 @@ todayRouter.get("/", async (req, res, next) => {
       month: month.month,
       salesTotal: fmt(salesTotal),
       salesProfit: fmt(salesProfit),
-      salesCount: sales.length,
+      salesCount,
       rechargeTotal: fmt(rechargeTotal),
       transferTotal: fmt(transferTotal),
       activeRepairs,
-      repairDelivered: deliveredToday.length,
+      repairDelivered,
       repairProfit: fmt(repairProfit),
-      repairPendingCount: pendingPickup.length,
+      repairPendingCount,
       repairPendingBalance: fmt(repairPendingBalance),
       repairUndeliveredCount: undeliveredAll,
       lowStockCount,

@@ -177,6 +177,8 @@ export function ProductForm() {
       setNewPhoneModel("");
       setCoverTypeId("");
       refetchPhoneModels();
+      qc.invalidateQueries({ queryKey: ["phone-models"] });
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
     },
   });
 
@@ -186,6 +188,7 @@ export function ProductForm() {
       setCoverTypeId(ct.id);
       setNewCoverType("");
       refetchCoverTypes();
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
     },
   });
 
@@ -229,6 +232,9 @@ export function ProductForm() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["covers-stats"] });
+      qc.invalidateQueries({ queryKey: ["phone-models"] });
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
       router.push("/inventory");
     },
   });

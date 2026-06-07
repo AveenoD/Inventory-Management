@@ -63,7 +63,12 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type StockInInput = z.infer<typeof stockInSchema>;
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 
-export type CoverTypeDto = { id: string; name: string; phoneModelId?: string | null };
+export type CoverTypeDto = {
+  id: string;
+  name: string;
+  phoneModelId?: string | null;
+  phoneModelName?: string | null;
+};
 
 export type ProductDto = {
   id: string;

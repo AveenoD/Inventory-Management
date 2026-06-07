@@ -83,7 +83,7 @@ function addRechargeAmount(
 
 export async function rollupRechargeDay(businessMonthId: string, date: Date) {
   const entries = await prisma.rechargeEntry.findMany({
-    where: { businessMonthId, date },
+    where: { businessMonthId, date, isActive: true },
   });
   const row = emptyRechargeRow();
   for (const e of entries) {

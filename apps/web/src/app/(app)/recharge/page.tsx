@@ -11,6 +11,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
 import {
   RECHARGE_OPERATORS,
   RECHARGE_AMOUNT_FIELDS,
@@ -23,10 +24,8 @@ import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
 import {
   Calendar,
   Download,
-  MoreVertical,
   Search,
   Smartphone,
-  Wallet,
   Zap,
 } from "lucide-react";
 
@@ -38,7 +37,6 @@ type RechargeRow = {
   amount: string;
   rechargeAmount?: string | null;
   note?: string | null;
-  mobileNumber?: string | null;
   saleProfit?: string | null;
   chillar?: string | null;
   act?: string | null;
@@ -47,7 +45,7 @@ type RechargeRow = {
 
 function formatProfitBreakdown(row: RechargeRow): string {
   const parts = getRechargeBreakdownParts(row);
-  if (parts.length === 0) return "—";
+  if (parts.length === 0) return "";
   if (parts.length === 1) return formatMoney(parts[0]!.amount);
   return parts.map((p) => formatMoney(p.amount)).join(" + ");
 }
@@ -61,12 +59,26 @@ const EMPTY_AMOUNTS = {
   mnp: "",
 };
 
-function extractMobile(row: RechargeRow): string | null {
-  const fromField = row.mobileNumber?.trim();
-  if (fromField) return fromField;
-  const note = (row.note ?? "").trim();
-  const match = note.match(/\b\d{10}\b/);
-  return match ? match[0] : null;
+type EditDraft = {
+  date: string;
+  operator: RechargeOperator;
+  rechargeAmount: string;
+  saleProfit: string;
+  chillar: string;
+  act: string;
+  mnp: string;
+};
+
+function rowToDraft(row: RechargeRow): EditDraft {
+  return {
+    date: row.date,
+    operator: row.operator as RechargeOperator,
+    rechargeAmount: row.rechargeAmount ?? "",
+    saleProfit: row.saleProfit ?? "",
+    chillar: row.chillar ?? "",
+    act: row.act ?? "",
+    mnp: row.mnp ?? "",
+  };
 }
 
 type OperatorKey = RechargeOperator;
@@ -136,6 +148,9 @@ export default function RechargePage() {
   const [rechargeAmount, setRechargeAmount] = useState("");
   const [amounts, setAmounts] = useState(EMPTY_AMOUNTS);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -193,14 +208,47 @@ export default function RechargePage() {
     },
   });
 
+  const update = useMutation({
+    mutationFn: ({ entryId, draft }: { entryId: string; draft: EditDraft }) =>
+      api.updateRechargeEntry(monthId!, entryId, {
+        date: draft.date,
+        operator: draft.operator,
+        rechargeAmount: parseMoneyInput(draft.rechargeAmount),
+        saleProfit: parseMoneyInput(draft.saleProfit),
+        chillar: parseMoneyInput(draft.chillar),
+        act: parseMoneyInput(draft.act),
+        mnp: parseMoneyInput(draft.mnp),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      setEditingId(null);
+      setEditDraft(null);
+      update.reset();
+    },
+  });
+
   const del = useMutation({
     mutationFn: (entryId: string) => api.deleteRechargeEntry(monthId!, entryId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setDeleteTargetId(null);
+      setOpenMenuId(null);
     },
   });
+
+  const startEdit = (row: RechargeRow) => {
+    setEditingId(row.id);
+    setEditDraft(rowToDraft(row));
+    setOpenMenuId(null);
+  };
+
+  const closeEdit = () => {
+    setEditingId(null);
+    setEditDraft(null);
+    update.reset();
+  };
 
   return (
     <MonthGate>
@@ -249,29 +297,6 @@ export default function RechargePage() {
             </div>
           </div>
 
-          <div className="recharge-stat card purple recharge-stat-optional">
-            <div className="recharge-stat-icon purple">
-              <Wallet size={18} />
-            </div>
-            <div className="recharge-stat-body">
-              <div className="stat-label">Last Month</div>
-              <div className="stat-value">—</div>
-              <div className="muted">— Transactions</div>
-            </div>
-          </div>
-
-          <div className="recharge-stat card amber recharge-stat-optional">
-            <div className="recharge-stat-icon amber">
-              <Calendar size={18} />
-            </div>
-            <div className="recharge-stat-body">
-              <div className="stat-label">Total Balance</div>
-              <div className="stat-value">—</div>
-              <div className="muted">
-                Opening Balance: <span className="recharge-opening">—</span>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -373,29 +398,34 @@ export default function RechargePage() {
       {!isLoading && !error && (
         <div className="data-table-wrap">
           <table className="data-list recharge-table">
+            <colgroup>
+              <col className="col-date" />
+              <col className="col-operator" />
+              <col className="col-type" />
+              <col className="col-recharge" />
+              <col className="col-profit" />
+              <col className="col-status" />
+              <col className="col-action" />
+            </colgroup>
             <thead>
               <tr>
-                <th>Date &amp; Time</th>
-                <th>Mobile Number</th>
-                <th>Operator</th>
-                <th>Type</th>
-                <th className="right">Recharge</th>
-                <th className="right">Profit / Chillar</th>
-                <th>Status</th>
-                <th className="right">Action</th>
+                <th className="col-date">Date</th>
+                <th className="col-operator">Operator</th>
+                <th className="col-type">Type</th>
+                <th className="col-recharge">Recharge</th>
+                <th className="col-profit">Profit / Chillar</th>
+                <th className="col-status">Status</th>
+                <th className="col-action">Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredEntries.map((r) => (
                 <tr key={r.id}>
-                  <td>
-                    <div className="recharge-datecell">
-                      <div className="recharge-datecell-date">{r.date}</div>
-                      <div className="recharge-datecell-time muted">—</div>
-                    </div>
+                  <td className="col-date">
+                    <div className="recharge-datecell-date">{r.date}</div>
                   </td>
-                  <td>
-                    <div className="recharge-mobile">
+                  <td className="col-operator">
+                    <div className="recharge-operator">
                       {RECHARGE_OPERATORS.includes(r.operator as OperatorKey) ? (
                         <OperatorLogo operator={r.operator as OperatorKey} />
                       ) : (
@@ -404,33 +434,42 @@ export default function RechargePage() {
                           aria-hidden="true"
                         />
                       )}
-                      <span>{extractMobile(r) ?? "—"}</span>
+                      <span>{r.operator}</span>
                     </div>
                   </td>
-                  <td>{r.operator}</td>
-                  <td>
+                  <td className="col-type">
                     <span className="badge recharge-type">{formatRechargeTypeLabel(r)}</span>
                   </td>
-                  <td className="right">
-                    {r.rechargeAmount ? formatMoney(r.rechargeAmount) : "—"}
+                  <td className="col-recharge">
+                    {r.rechargeAmount ? formatMoney(r.rechargeAmount) : ""}
                   </td>
-                  <td className="right">{formatProfitBreakdown(r)}</td>
-                  <td>
+                  <td className="col-profit">{formatProfitBreakdown(r)}</td>
+                  <td className="col-status">
                     <span className="recharge-status">
                       <span className="recharge-status-dot" aria-hidden="true" />
                       <span className="ok">Success</span>
                     </span>
                   </td>
-                  <td className="right">
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      title="Delete"
-                      disabled={del.isPending}
-                      onClick={() => setDeleteTargetId(r.id)}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
+                  <td className="col-action">
+                    <RowActionMenu
+                      open={openMenuId === r.id}
+                      disabled={del.isPending || update.isPending}
+                      onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
+                      onClose={() => setOpenMenuId(null)}
+                      items={[
+                        {
+                          key: "edit",
+                          label: "Edit",
+                          onClick: () => startEdit(r),
+                        },
+                        {
+                          key: "delete",
+                          label: "Delete",
+                          danger: true,
+                          onClick: () => setDeleteTargetId(r.id),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -485,6 +524,78 @@ export default function RechargePage() {
       <p className="muted">
         <Link href={`/months`} className="link-muted">Advanced: month grid</Link>
       </p>
+      <FormModal open={!!editingId && !!editDraft} title="Edit recharge" onClose={closeEdit}>
+        {editDraft && (
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingId) update.mutate({ entryId: editingId, draft: editDraft });
+            }}
+          >
+            <label className="stat-label">Date</label>
+            <input
+              type="date"
+              value={editDraft.date}
+              onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))}
+            />
+
+            <label className="stat-label">Operator</label>
+            <select
+              value={editDraft.operator}
+              onChange={(e) =>
+                setEditDraft((prev) =>
+                  prev ? { ...prev, operator: e.target.value as RechargeOperator } : prev,
+                )
+              }
+            >
+              {RECHARGE_OPERATORS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+
+            <label className="stat-label">Recharge Amount (₹)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="e.g. 249 or 299"
+              value={editDraft.rechargeAmount}
+              onChange={(e) =>
+                setEditDraft((prev) => (prev ? { ...prev, rechargeAmount: e.target.value } : prev))
+              }
+              required
+            />
+
+            <div className="stat-label">Income (₹) — leave blank for 0</div>
+            <div className="recharge-amount-grid">
+              {RECHARGE_AMOUNT_FIELDS.map((field) => (
+                <label key={field.key} className="recharge-amount-field">
+                  <span>{field.label}</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0"
+                    value={editDraft[field.key]}
+                    onChange={(e) =>
+                      setEditDraft((prev) => (prev ? { ...prev, [field.key]: e.target.value } : prev))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+
+            {update.error && <p className="error">{(update.error as Error).message}</p>}
+            <button type="submit" disabled={update.isPending}>
+              {update.isPending ? "Saving…" : "Save changes"}
+            </button>
+          </form>
+        )}
+      </FormModal>
+
       <FormModal open={open} title="Add recharge" onClose={() => setOpen(false)}>
         <form
           className="form-stack"
@@ -542,12 +653,14 @@ export default function RechargePage() {
 
       <ConfirmDialog
         open={!!deleteTargetId}
-        title="Delete recharge?"
-        message="Remove this recharge entry permanently? This cannot be undone."
+        title="Remove recharge?"
+        message="Remove this recharge from the list? Past totals will be updated. The record is kept hidden, not permanently erased."
         loading={del.isPending}
         onCancel={() => setDeleteTargetId(null)}
         onConfirm={() => deleteTargetId && del.mutate(deleteTargetId)}
+        confirmLabel="Remove"
       />
+
     </div>
     </MonthGate>
   );

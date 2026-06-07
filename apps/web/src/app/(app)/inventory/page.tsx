@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { PackagePlus, Trash2 } from "lucide-react";
+import { PackagePlus, Pencil, Search, Trash2 } from "lucide-react";
 import {
   PRODUCT_KIND_LABELS,
   type ProductKind,
@@ -15,6 +15,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FormModal } from "@/components/ui/form-modal";
+import { parseMoneyInput } from "@/lib/format";
 
 type InventoryFilter =
   | "ALL"
@@ -98,12 +100,32 @@ function queryForFilter(filter: InventoryFilter) {
   }
 }
 
+type EditProductDraft = {
+  name: string;
+  buyPrice: string;
+  sellPrice: string;
+  repairCharge: string;
+  minStock: string;
+};
+
+function productToDraft(p: ProductDto): EditProductDraft {
+  return {
+    name: p.name,
+    buyPrice: p.buyPrice,
+    sellPrice: p.sellPrice,
+    repairCharge: p.repairCharge ?? "",
+    minStock: String(p.minStock),
+  };
+}
+
 function InventoryProductCard({
   product: p,
   filter,
+  onEdit,
 }: {
   product: ProductDto;
   filter: InventoryFilter;
+  onEdit: (product: ProductDto) => void;
 }) {
   const subline = productSubline(p, filter);
 
@@ -136,9 +158,14 @@ function InventoryProductCard({
         </div>
       </div>
 
-      <Link className="inventory-card__action" href={`/inventory/${p.id}/stock`} title="Add stock">
-        <PackagePlus size={16} /> Add stock
-      </Link>
+      <div className="inventory-card__actions">
+        <button type="button" className="inventory-card__action secondary" onClick={() => onEdit(p)}>
+          <Pencil size={16} /> Edit
+        </button>
+        <Link className="inventory-card__action" href={`/inventory/${p.id}/stock`} title="Add stock">
+          <PackagePlus size={16} /> Add stock
+        </Link>
+      </div>
     </article>
   );
 }
@@ -147,24 +174,136 @@ export default function InventoryPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<InventoryFilter>("ALL");
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const [coverPhoneModelId, setCoverPhoneModelId] = useState("");
+  const [coverTypeName, setCoverTypeName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [editTarget, setEditTarget] = useState<ProductDto | null>(null);
+  const [editDraft, setEditDraft] = useState<EditProductDraft | null>(null);
   const { kind, filters } = queryForFilter(filter);
+
+  const productFilters = useMemo(() => {
+    if (filter !== "COVERS") return filters;
+    return {
+      segment: "covers" as const,
+      ...(coverPhoneModelId && { phoneModelId: coverPhoneModelId }),
+      ...(coverTypeName && { coverTypeName }),
+    };
+  }, [filter, filters, coverPhoneModelId, coverTypeName]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     setPage(1);
+    if (filter !== "COVERS") {
+      setCoverPhoneModelId("");
+      setCoverTypeName("");
+    }
   }, [filter]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchDebounced, coverPhoneModelId, coverTypeName]);
+
+  const { data: phoneModelsData } = useQuery({
+    queryKey: ["phone-models"],
+    queryFn: () => api.getPhoneModels(),
+    enabled: filter === "COVERS",
+  });
+
+  const { data: coverTypesData } = useQuery({
+    queryKey: ["cover-types", "catalog"],
+    queryFn: () => api.getCoverTypes(),
+    enabled: filter === "COVERS",
+  });
+
+  const { data: coverStats } = useQuery({
+    queryKey: ["covers-stats"],
+    queryFn: () => api.getCoverProductStats(),
+    enabled: filter === "COVERS",
+  });
+
+  const productCountByModel = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of coverStats?.byModel ?? []) {
+      counts.set(row.phoneModelId, row.count);
+    }
+    return counts;
+  }, [coverStats]);
+
+  const productCountByTypeName = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of coverStats?.byType ?? []) {
+      counts.set(row.name, row.count);
+    }
+    return counts;
+  }, [coverStats]);
+
+  const coverModelOptions = useMemo(() => {
+    return (phoneModelsData?.data ?? []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      count: productCountByModel.get(m.id) ?? 0,
+    }));
+  }, [phoneModelsData, productCountByModel]);
+
+  const coverTypeOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of coverTypesData?.data ?? []) {
+      if (t.name) names.add(t.name);
+    }
+    return [...names]
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({
+        name,
+        count: productCountByTypeName.get(name) ?? 0,
+      }));
+  }, [coverTypesData, productCountByTypeName]);
+
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ["products", filter, page],
-    queryFn: () => api.getProducts(page, undefined, kind, PAGE_SIZE, undefined, filters),
+    queryKey: ["products", filter, page, searchDebounced, coverPhoneModelId, coverTypeName],
+    queryFn: () =>
+      api.getProducts(
+        page,
+        searchDebounced || undefined,
+        kind,
+        PAGE_SIZE,
+        undefined,
+        productFilters,
+      ),
+  });
+
+  const updateProduct = useMutation({
+    mutationFn: ({ id, draft, kind }: { id: string; draft: EditProductDraft; kind: ProductKind }) =>
+      api.updateProduct(id, {
+        name: draft.name.trim(),
+        buyPrice: parseMoneyInput(draft.buyPrice),
+        sellPrice: parseMoneyInput(draft.sellPrice),
+        ...(kind === "REPAIR_PART" && {
+          repairCharge: parseMoneyInput(draft.repairCharge),
+        }),
+        minStock: Math.max(0, parseInt(draft.minStock, 10) || 0),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["covers-stats"] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      setEditTarget(null);
+      setEditDraft(null);
+      updateProduct.reset();
+    },
   });
 
   const removeProduct = useMutation({
     mutationFn: (productId: string) => api.deleteProduct(productId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["covers-stats"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      qc.invalidateQueries({ queryKey: ["sales"] });
       setDeleteTarget(null);
     },
   });
@@ -173,31 +312,86 @@ export default function InventoryPage() {
   const meta = data?.meta;
   const total = meta?.total ?? products.length;
   const totalPages = meta?.totalPages ?? 1;
+
+  const openEdit = (product: ProductDto) => {
+    setEditTarget(product);
+    setEditDraft(productToDraft(product));
+  };
+
+  const closeEdit = () => {
+    setEditTarget(null);
+    setEditDraft(null);
+    updateProduct.reset();
+  };
+
   return (
     <div className="inventory-page">
       <PageHeader
         title="Inventory"
         subtitle="Stock by category"
         action={
-          <Link href={addProductHref(filter)} className="inventory-add-link">
-            <button type="button">+ Add product</button>
-          </Link>
+          <div className="inventory-top-actions">
+            <div className="recharge-search inventory-search">
+              <Search size={16} />
+              <input
+                placeholder="Search products…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <Link href={addProductHref(filter)} className="inventory-add-link">
+              <button type="button">+ Add product</button>
+            </Link>
+          </div>
         }
       />
 
-      <div className="inventory-tabs" role="tablist" aria-label="Inventory categories">
-        {FILTER_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === tab.id}
-            className={filter === tab.id ? "tab active" : "tab"}
-            onClick={() => setFilter(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="inventory-tabs-bar">
+        <div className="inventory-tabs" role="tablist" aria-label="Inventory categories">
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === tab.id}
+              className={filter === tab.id ? "tab active" : "tab"}
+              onClick={() => setFilter(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {filter === "COVERS" && (
+          <div className="inventory-cover-filters">
+            <select
+              className="inventory-cover-select"
+              value={coverTypeName}
+              onChange={(e) => setCoverTypeName(e.target.value)}
+              aria-label="Filter by cover type"
+            >
+              <option value="">All cover types</option>
+              {coverTypeOptions.map((t) => (
+                <option key={t.name} value={t.name}>
+                  {t.name} ({t.count})
+                </option>
+              ))}
+            </select>
+            <select
+              className="inventory-cover-select"
+              value={coverPhoneModelId}
+              onChange={(e) => setCoverPhoneModelId(e.target.value)}
+              aria-label="Filter by phone model"
+            >
+              <option value="">All phone models</option>
+              {coverModelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.count})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {isLoading && <PageLoader message="Loading products…" />}
@@ -244,7 +438,7 @@ export default function InventoryPage() {
                   <th className="col-sell">
                     {filter === "REPAIR_PART" ? "Repair" : "Sell"}
                   </th>
-                  <th className="col-action" aria-label="Actions" />
+                  <th className="col-action">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,6 +472,15 @@ export default function InventoryPage() {
                       <td className="col-sell inventory-money">{sellPrice(p)}</td>
                       <td className="col-action">
                         <div className="row-actions">
+                          <button
+                            type="button"
+                            className="inventory-action-btn"
+                            title="Edit product"
+                            aria-label={`Edit ${p.name}`}
+                            onClick={() => openEdit(p)}
+                          >
+                            Edit
+                          </button>
                           <Link
                             className="inventory-stock-btn"
                             href={`/inventory/${p.id}/stock`}
@@ -306,7 +509,7 @@ export default function InventoryPage() {
 
           <div className="inventory-card-list">
             {products.map((p) => (
-              <InventoryProductCard key={p.id} product={p} filter={filter} />
+              <InventoryProductCard key={p.id} product={p} filter={filter} onEdit={openEdit} />
             ))}
           </div>
 
@@ -340,14 +543,92 @@ export default function InventoryPage() {
         </>
       )}
 
+      <FormModal open={!!editTarget && !!editDraft} title="Edit product" onClose={closeEdit}>
+        {editTarget && editDraft && (
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              updateProduct.mutate({
+                id: editTarget.id,
+                draft: editDraft,
+                kind: editTarget.kind,
+              });
+            }}
+          >
+            <label className="stat-label">Product name</label>
+            <input
+              value={editDraft.name}
+              onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+              required
+            />
+
+            <label className="stat-label">Cost price (₹)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={editDraft.buyPrice}
+              onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, buyPrice: e.target.value } : prev))}
+              required
+            />
+
+            {editTarget.kind === "REPAIR_PART" ? (
+              <>
+                <label className="stat-label">Repair charge (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editDraft.repairCharge}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, repairCharge: e.target.value } : prev))
+                  }
+                  required
+                />
+              </>
+            ) : (
+              <>
+                <label className="stat-label">Sell price (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editDraft.sellPrice}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, sellPrice: e.target.value } : prev))
+                  }
+                  required
+                />
+              </>
+            )}
+
+            <label className="stat-label">Minimum stock alert</label>
+            <input
+              type="number"
+              step="1"
+              min="0"
+              value={editDraft.minStock}
+              onChange={(e) => setEditDraft((prev) => (prev ? { ...prev, minStock: e.target.value } : prev))}
+            />
+
+            {updateProduct.error && <p className="error">{(updateProduct.error as Error).message}</p>}
+            <button type="submit" disabled={updateProduct.isPending}>
+              {updateProduct.isPending ? "Saving…" : "Save changes"}
+            </button>
+          </form>
+        )}
+      </FormModal>
+
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete product?"
+        title="Remove product?"
         message={
           deleteTarget
-            ? `Remove "${deleteTarget.name}" permanently? Stock history will be deleted. Linked sales and repair records will be updated.`
+            ? `Remove "${deleteTarget.name}" from inventory? Past sales and income records will stay unchanged.`
             : ""
         }
+        confirmLabel="Remove"
         error={removeProduct.error ? (removeProduct.error as Error).message : null}
         loading={removeProduct.isPending}
         onCancel={() => {

@@ -78,6 +78,7 @@ inventoryRouter.get("/products", async (req, res, next) => {
     const categoryId = req.query.categoryId as string | undefined;
     const phoneModelId = req.query.phoneModelId as string | undefined;
     const coverTypeId = req.query.coverTypeId as string | undefined;
+    const coverTypeName = String(req.query.coverTypeName ?? "").trim();
     const kind = req.query.kind as ProductKind | undefined;
     const excludeKinds =
       typeof req.query.excludeKinds === "string" && req.query.excludeKinds.trim()
@@ -94,12 +95,15 @@ inventoryRouter.get("/products", async (req, res, next) => {
       userId: req.user!.userId,
       isActive: true,
       ...(categoryId && { categoryId }),
-      ...(phoneModelId && { phoneModelId }),
+      ...(phoneModelId && segment !== "covers" && { phoneModelId }),
       ...(coverTypeId && { coverTypeId }),
-      ...(kindFilter && { kind: kindFilter }),
+      ...(coverTypeName && {
+        coverType: { name: { equals: coverTypeName, mode: "insensitive" as const } },
+      }),
+      ...(kindFilter && segment !== "covers" && segment !== "other_accessories" && { kind: kindFilter }),
       ...(segment === "covers" && {
         kind: "MOBILE_ACCESSORY" as const,
-        phoneModelId: { not: null },
+        phoneModelId: phoneModelId ?? { not: null },
       }),
       ...(segment === "other_accessories" && {
         kind: "MOBILE_ACCESSORY" as const,
@@ -135,20 +139,54 @@ inventoryRouter.get("/products", async (req, res, next) => {
 
 inventoryRouter.get("/products/low-stock", async (req, res, next) => {
   try {
-    const products = await prisma.product.findMany({
-      where: {
-        userId: req.user!.userId,
-        isActive: true,
-      },
-    });
-    const low = products.filter((p) => p.stockQty <= p.minStock);
+    const userId = req.user!.userId;
+    const low = await prisma.$queryRaw<
+      Array<{ id: string; name: string; stockQty: number; minStock: number }>
+    >`
+      SELECT "id", "name", "stockQty", "minStock"
+      FROM "Product"
+      WHERE "userId" = ${userId}
+        AND "isActive" = true
+        AND "stockQty" <= "minStock"
+      ORDER BY ("stockQty" - "minStock") ASC, "name" ASC
+    `;
+    res.json({ data: low });
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.get("/products/covers-stats", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const coversWhere = {
+      userId,
+      isActive: true,
+      kind: "MOBILE_ACCESSORY" as const,
+      phoneModelId: { not: null },
+    };
+    const [byModel, byType] = await Promise.all([
+      prisma.product.groupBy({
+        by: ["phoneModelId"],
+        where: coversWhere,
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<Array<{ name: string; count: number }>>`
+        SELECT ct."name" AS name, COUNT(*)::int AS count
+        FROM "Product" p
+        INNER JOIN "CoverType" ct ON p."coverTypeId" = ct."id"
+        WHERE p."userId" = ${userId}
+          AND p."isActive" = true
+          AND p."kind" = 'MOBILE_ACCESSORY'
+          AND p."phoneModelId" IS NOT NULL
+        GROUP BY ct."name"
+      `,
+    ]);
     res.json({
-      data: low.map((p) => ({
-        id: p.id,
-        name: p.name,
-        stockQty: p.stockQty,
-        minStock: p.minStock,
-      })),
+      byModel: byModel
+        .filter((r) => r.phoneModelId)
+        .map((r) => ({ phoneModelId: r.phoneModelId!, count: r._count._all })),
+      byType,
     });
   } catch (e) {
     next(e);
@@ -188,10 +226,24 @@ inventoryRouter.get("/cover-types", async (req, res, next) => {
   try {
     const userId = req.user!.userId;
     const phoneModelId = String(req.query.phoneModelId ?? "").trim();
+
     if (!phoneModelId) {
-      res.status(400).json({ error: "phoneModelId is required" });
+      const types = await prisma.coverType.findMany({
+        where: { userId },
+        include: { phoneModel: true },
+        orderBy: [{ phoneModel: { name: "asc" } }, { name: "asc" }],
+      });
+      res.json({
+        data: types.map((t) => ({
+          id: t.id,
+          name: t.name,
+          phoneModelId: t.phoneModelId,
+          phoneModelName: t.phoneModel?.name ?? null,
+        })),
+      });
       return;
     }
+
     const model = await prisma.phoneModel.findFirst({
       where: { id: phoneModelId, userId },
     });
@@ -205,7 +257,12 @@ inventoryRouter.get("/cover-types", async (req, res, next) => {
       orderBy: { name: "asc" },
     });
     res.json({
-      data: types.map((t) => ({ id: t.id, name: t.name, phoneModelId: t.phoneModelId })),
+      data: types.map((t) => ({
+        id: t.id,
+        name: t.name,
+        phoneModelId: t.phoneModelId,
+        phoneModelName: model.name,
+      })),
     });
   } catch (e) {
     next(e);
@@ -340,36 +397,41 @@ inventoryRouter.post("/products", async (req, res, next) => {
       return;
     }
 
-    const product = await prisma.product.create({
-      data: {
-        userId,
-        kind,
-        name,
-        categoryId,
-        phoneModel: (phoneModelName ?? body.phoneModel?.trim()) || null,
-        phoneModelId,
-        variantName: isDefaultCoverAccessory ? body.variantName?.trim() || null : null,
-        coverTypeId,
-        partType: kind === "REPAIR_PART" ? body.partType?.trim() || null : null,
-        repairCharge: repairChargeFixed,
-        buyPrice: buyPriceFixed,
-        sellPrice: sellPriceFixed,
-        minStock: body.minStock,
-        stockQty: body.openingStock,
-      },
-      include: productInclude,
-    });
-    if (body.openingStock > 0) {
-      await prisma.stockMovement.create({
+    const product = await prisma.$transaction(async (tx) => {
+      const created = await tx.product.create({
         data: {
-          productId: product.id,
-          type: "IN",
-          quantity: body.openingStock,
-          unitCost: buyPriceFixed,
-          note: "Opening stock",
+          userId,
+          kind,
+          name,
+          categoryId,
+          phoneModel: (phoneModelName ?? body.phoneModel?.trim()) || null,
+          phoneModelId,
+          variantName: isDefaultCoverAccessory ? body.variantName?.trim() || null : null,
+          coverTypeId,
+          partType: kind === "REPAIR_PART" ? body.partType?.trim() || null : null,
+          repairCharge: repairChargeFixed,
+          buyPrice: buyPriceFixed,
+          sellPrice: sellPriceFixed,
+          minStock: body.minStock,
+          stockQty: body.openingStock,
         },
       });
-    }
+      if (body.openingStock > 0) {
+        await tx.stockMovement.create({
+          data: {
+            productId: created.id,
+            type: "IN",
+            quantity: body.openingStock,
+            unitCost: buyPriceFixed,
+            note: "Opening stock",
+          },
+        });
+      }
+      return tx.product.findFirstOrThrow({
+        where: { id: created.id },
+        include: productInclude,
+      });
+    });
     res.status(201).json(mapProductDto(product));
   } catch (e) {
     next(e);
@@ -395,65 +457,17 @@ inventoryRouter.get("/products/:id", async (req, res, next) => {
 inventoryRouter.delete("/products/:id", async (req, res, next) => {
   try {
     const existing = await prisma.product.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
+      where: { id: req.params.id, userId: req.user!.userId, isActive: true },
     });
     if (!existing) {
       res.status(404).json({ error: "Product not found" });
       return;
     }
 
-    const salesToRollup: Array<{ businessMonthId: string; date: Date }> = [];
-
-    await prisma.$transaction(async (tx) => {
-      await tx.repairJobPart.deleteMany({ where: { productId: existing.id } });
-
-      const saleLines = await tx.saleLine.findMany({
-        where: { productId: existing.id },
-        include: { sale: true },
-      });
-      const saleIds = [...new Set(saleLines.map((l) => l.saleId))];
-
-      for (const saleId of saleIds) {
-        const sale = await tx.sale.findUnique({
-          where: { id: saleId },
-          include: { lines: true },
-        });
-        if (!sale) continue;
-
-        const remaining = sale.lines.filter((l) => l.productId !== existing.id);
-
-        if (remaining.length === 0) {
-          await tx.stockMovement.deleteMany({ where: { saleId } });
-          await tx.sale.delete({ where: { id: saleId } });
-        } else {
-          await tx.saleLine.deleteMany({ where: { saleId, productId: existing.id } });
-          await tx.stockMovement.deleteMany({ where: { saleId, productId: existing.id } });
-
-          let subtotal = d(0);
-          let totalCost = d(0);
-          for (const line of remaining) {
-            subtotal = subtotal.plus(d(line.lineTotal));
-            totalCost = totalCost.plus(d(line.unitCost).times(line.quantity));
-          }
-          const total = subtotal.minus(d(sale.discount));
-          await tx.sale.update({
-            where: { id: saleId },
-            data: { total: fmt(total), totalCost: fmt(totalCost) },
-          });
-        }
-
-        if (sale.businessMonthId) {
-          salesToRollup.push({ businessMonthId: sale.businessMonthId, date: sale.date });
-        }
-      }
-
-      await tx.stockMovement.deleteMany({ where: { productId: existing.id } });
-      await tx.product.delete({ where: { id: existing.id } });
+    await prisma.product.update({
+      where: { id: existing.id },
+      data: { isActive: false },
     });
-
-    for (const { businessMonthId, date } of salesToRollup) {
-      await rollupMobileDayFromSales(businessMonthId, date);
-    }
 
     res.status(204).end();
   } catch (e) {
@@ -465,7 +479,7 @@ inventoryRouter.patch("/products/:id", async (req, res, next) => {
   try {
     const body = updateProductSchema.parse(req.body);
     const existing = await prisma.product.findFirst({
-      where: { id: req.params.id, userId: req.user!.userId },
+      where: { id: req.params.id, userId: req.user!.userId, isActive: true },
     });
     if (!existing) {
       res.status(404).json({ error: "Product not found" });
@@ -477,6 +491,7 @@ inventoryRouter.patch("/products/:id", async (req, res, next) => {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.buyPrice !== undefined && { buyPrice: fmt(d(body.buyPrice)) }),
         ...(body.sellPrice !== undefined && { sellPrice: fmt(d(body.sellPrice)) }),
+        ...(body.repairCharge !== undefined && { repairCharge: fmt(d(body.repairCharge)) }),
         ...(body.minStock !== undefined && { minStock: body.minStock }),
       },
       include: productInclude,
@@ -491,7 +506,7 @@ inventoryRouter.post("/stock/in", async (req, res, next) => {
   try {
     const body = stockInSchema.parse(req.body);
     const product = await prisma.product.findFirst({
-      where: { id: body.productId, userId: req.user!.userId },
+      where: { id: body.productId, userId: req.user!.userId, isActive: true },
     });
     if (!product) {
       res.status(404).json({ error: "Product not found" });
@@ -567,7 +582,7 @@ inventoryRouter.post("/sales", async (req, res, next) => {
 
       for (const line of body.lines) {
         const product = await tx.product.findFirst({
-          where: { id: line.productId, userId: req.user!.userId },
+          where: { id: line.productId, userId: req.user!.userId, isActive: true },
         });
         if (!product) throw new Error(`Product not found: ${line.productId}`);
         if (product.stockQty < line.quantity) {

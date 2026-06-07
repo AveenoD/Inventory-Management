@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
+import rateLimit from "express-rate-limit";
 import { logger } from "./lib/logger.js";
 import { authRouter } from "./routes/auth.routes.js";
 import { monthsRouter } from "./routes/months.routes.js";
@@ -61,6 +62,15 @@ export function createApp() {
     }),
   );
   app.use(requestTimeout());
+
+  const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests — please slow down" },
+  });
+  app.use("/api/v1", apiLimiter);
 
   app.get("/health", async (_req, res) => {
     const dbCheck = prisma.$queryRaw`SELECT 1`;
