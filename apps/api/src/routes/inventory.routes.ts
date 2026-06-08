@@ -25,6 +25,12 @@ import {
   ensureCategoryForKind,
   productInclude,
 } from "../services/inventory-product.service.js";
+import {
+  fireNotification,
+  notifyLowStockIfNeeded,
+  notifyRepairPickup,
+  notifyRepairReceived,
+} from "../services/notification.service.js";
 
 export const inventoryRouter = Router();
 inventoryRouter.use(requireAuth);
@@ -531,6 +537,15 @@ inventoryRouter.post("/stock/in", async (req, res, next) => {
     const updated = await prisma.product.findUniqueOrThrow({
       where: { id: product.id },
     });
+    fireNotification(() =>
+      notifyLowStockIfNeeded(
+        req.user!.userId,
+        updated.id,
+        updated.name,
+        updated.stockQty,
+        updated.minStock,
+      ),
+    );
     res.json({ stockQty: updated.stockQty });
   } catch (e) {
     next(e);
@@ -640,13 +655,28 @@ inventoryRouter.post("/sales", async (req, res, next) => {
         });
       }
 
-      return sale;
+      return { sale, lineData };
     });
+
+    for (const ld of result.lineData) {
+      const product = await prisma.product.findUniqueOrThrow({
+        where: { id: ld.productId },
+      });
+      fireNotification(() =>
+        notifyLowStockIfNeeded(
+          req.user!.userId,
+          product.id,
+          product.name,
+          product.stockQty,
+          product.minStock,
+        ),
+      );
+    }
 
     await rollupMobileDayFromSales(month.id, date);
 
     const sale = await prisma.sale.findUniqueOrThrow({
-      where: { id: result.id },
+      where: { id: result.sale.id },
       include: { lines: { include: { product: true } } },
     });
 

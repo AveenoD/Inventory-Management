@@ -30,6 +30,19 @@ enum RepairJobStatus {
   UNREPAIRABLE_RETURNED
 }
 
+enum NotificationType {
+  LOW_STOCK
+  REPAIR_PICKUP
+  REPAIR_RECEIVED
+  SALE
+}
+
+enum PushPlatform {
+  ios
+  android
+  web
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -42,6 +55,8 @@ model User {
   parties        Party[]
   coverTypes     CoverType[]
   phoneModels    PhoneModel[]
+  notifications  Notification[]
+  pushDevices    PushDevice[]
 }
 
 model BusinessMonth {
@@ -481,4 +496,32 @@ model PartyTransaction {
 
   @@index([businessMonthId, date])
   @@index([partyId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
+model PushDevice {
+  id         String       @id @default(cuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   PushPlatform
+  token      String
+  lastSeenAt DateTime     @default(now())
+  createdAt  DateTime     @default(now())
+
+  @@unique([userId, token])
+  @@index([userId])
 }

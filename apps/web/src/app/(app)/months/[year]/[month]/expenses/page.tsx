@@ -1,14 +1,10 @@
-"use client";
+import LegacyExpensesRedirect from "./page-client";
+import { firebaseYearMonthParams } from "@/lib/firebase-static";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+export function generateStaticParams() {
+  return firebaseYearMonthParams();
+}
 
-export default function LegacyExpensesRedirect() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/expenses");
-  }, [router]);
-
-  return null;
+export default function ExpensesRedirectPage() {
+  return <LegacyExpensesRedirect />;
 }

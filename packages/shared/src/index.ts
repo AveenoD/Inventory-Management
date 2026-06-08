@@ -16,4 +16,5 @@ export * from "./lib/money.js";
 export * from "./schemas/product.js";
 export * from "./schemas/entries.js";
 export * from "./schemas/today.js";
+export * from "./schemas/notification.js";
 export { createApiClient, ApiError } from "./api-client.js";

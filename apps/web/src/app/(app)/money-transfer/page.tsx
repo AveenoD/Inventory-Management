@@ -19,8 +19,9 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
 import { formatMoney, parseMoneyInput, sumMoney } from "@/lib/format";
-import { Calendar, Download, MoreVertical, Search } from "lucide-react";
+import { Calendar, Download, Search } from "lucide-react";
 
 type TransferRow = {
   id: string;
@@ -33,6 +34,12 @@ type TransferRow = {
 const PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_CATEGORY: TransferCategoryId = "dmt99";
 
+function emptyAmountsFor(categoryId: TransferCategoryId): Record<string, string> {
+  return Object.fromEntries(
+    getSubServicesForCategory(categoryId).map((sub) => [sub.key, ""]),
+  );
+}
+
 export default function MoneyTransferPage() {
   const { monthId } = useMonthContext();
   const qc = useQueryClient();
@@ -40,10 +47,9 @@ export default function MoneyTransferPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [categoryId, setCategoryId] = useState<TransferCategoryId>(DEFAULT_CATEGORY);
-  const [serviceKey, setServiceKey] = useState<TransferServiceKey>(
-    getSubServicesForCategory(DEFAULT_CATEGORY)[0]!.key,
+  const [amounts, setAmounts] = useState<Record<string, string>>(() =>
+    emptyAmountsFor(DEFAULT_CATEGORY),
   );
-  const [amount, setAmount] = useState("");
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(10);
@@ -53,13 +59,14 @@ export default function MoneyTransferPage() {
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
   }, [search]);
 
-  const subServices = getSubServicesForCategory(categoryId);
+  const amountFields = getSubServicesForCategory(categoryId);
   const filterSubServices =
     categoryFilter === "ALL"
       ? TRANSFER_SERVICES
@@ -70,12 +77,7 @@ export default function MoneyTransferPage() {
 
   function handleCategoryChange(nextCategory: TransferCategoryId) {
     setCategoryId(nextCategory);
-    const subs = getSubServicesForCategory(nextCategory);
-    if (subs[0]) setServiceKey(subs[0].key);
-  }
-
-  function handleSubServiceChange(nextKey: TransferServiceKey) {
-    setServiceKey(nextKey);
+    setAmounts(emptyAmountsFor(nextCategory));
   }
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -91,17 +93,28 @@ export default function MoneyTransferPage() {
   const totalTx = meta?.total ?? entries.length;
 
   const create = useMutation({
-    mutationFn: () =>
-      api.createTransferEntry(monthId!, {
-        date,
-        serviceKey,
-        amount: parseMoneyInput(amount),
-      }),
+    mutationFn: async () => {
+      const subs = getSubServicesForCategory(categoryId);
+      const payloads = subs
+        .map((sub) => ({
+          serviceKey: sub.key as TransferServiceKey,
+          amount: parseMoneyInput(amounts[sub.key] ?? ""),
+        }))
+        .filter((p) => p.amount > 0);
+
+      if (payloads.length === 0) {
+        throw new Error("Enter at least one amount greater than 0");
+      }
+
+      for (const p of payloads) {
+        await api.createTransferEntry(monthId!, { date, serviceKey: p.serviceKey, amount: p.amount });
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setOpen(false);
-      setAmount("");
+      setAmounts(emptyAmountsFor(categoryId));
     },
   });
 
@@ -111,6 +124,7 @@ export default function MoneyTransferPage() {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setDeleteTargetId(null);
+      setOpenMenuId(null);
     },
   });
 
@@ -138,8 +152,9 @@ export default function MoneyTransferPage() {
   const showingTo = Math.min(safePage * pageSize, filteredEntries.length || 0);
 
   function openAddModal() {
+    setDate(today);
     setCategoryId(DEFAULT_CATEGORY);
-    setServiceKey(getSubServicesForCategory(DEFAULT_CATEGORY)[0]!.key);
+    setAmounts(emptyAmountsFor(DEFAULT_CATEGORY));
     setOpen(true);
   }
 
@@ -162,9 +177,6 @@ export default function MoneyTransferPage() {
                 }}
               />
             </div>
-            <button type="button" className="transfer-add-btn" onClick={openAddModal}>
-              + Add Transfer
-            </button>
           </div>
         }
       />
@@ -191,101 +203,109 @@ export default function MoneyTransferPage() {
         </div>
       )}
 
-      {isLoading && <PageLoader message="Loading entries…" />}
-      {error && (
-        <div className="card error-card">
-          <p className="error">{(error as Error).message}</p>
-          <button type="button" onClick={() => refetch()}>Retry</button>
-        </div>
-      )}
-      {!isLoading && !error && filteredEntries.length === 0 && !isFetching && (
-        <EmptyState
-          title="No transfer entries yet"
-          description="Add DMT, AEPS, or other money transfer records for this month."
-          action={
-            <button type="button" onClick={openAddModal}>
-              Add transfer
-            </button>
-          }
-        />
-      )}
-
-      {!isLoading && !error && filteredEntries.length > 0 && (
-        <div className="transfer-card card">
-          <div className="transfer-toolbar">
-            <div className="transfer-toolbar-left">
-              <div className="transfer-date">
-                <span className="transfer-date-icon" aria-hidden="true">
-                  <Calendar size={16} />
-                </span>
-                <input
-                  type="date"
-                  value={dateFilter}
-                  onChange={(e) => {
-                    setDateFilter(e.target.value);
+      <div className="transfer-card card">
+        <div className="transfer-toolbar">
+          <div className="transfer-toolbar-left">
+            <div className="transfer-date">
+              <span className="transfer-date-icon" aria-hidden="true">
+                <Calendar size={16} />
+              </span>
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setPage(1);
+                }}
+              />
+              {dateFilter && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    setDateFilter("");
                     setPage(1);
                   }}
-                />
-                {dateFilter && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      setDateFilter("");
-                      setPage(1);
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              <select
-                className="transfer-select"
-                value={categoryFilter}
-                onChange={(e) => {
-                  setCategoryFilter(e.target.value);
-                  setSubFilter("ALL");
-                  setPage(1);
-                }}
-              >
-                <option value="ALL">All Services</option>
-                {TRANSFER_CATEGORIES.map((c) => (
-                  <option key={c.id} value={c.id}>{c.label}</option>
-                ))}
-              </select>
-
-              <select
-                className="transfer-select"
-                value={subFilter}
-                onChange={(e) => {
-                  setSubFilter(e.target.value);
-                  setPage(1);
-                }}
-              >
-                <option value="ALL">All Sub-types</option>
-                {filterSubServices.map((s) => (
-                  <option key={s.key} value={s.key}>{s.label}</option>
-                ))}
-              </select>
+                >
+                  Clear
+                </button>
+              )}
             </div>
 
-            <div className="transfer-card-actions">
-              <button type="button" className="secondary" onClick={() => {}} title="Export (coming soon)">
-                <Download size={16} /> Export
-              </button>
-            </div>
+            <select
+              className="transfer-select"
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setSubFilter("ALL");
+                setPage(1);
+              }}
+            >
+              <option value="ALL">All Services</option>
+              {TRANSFER_CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+
+            <select
+              className="transfer-select"
+              value={subFilter}
+              onChange={(e) => {
+                setSubFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="ALL">All Sub-types</option>
+              {filterSubServices.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
           </div>
 
+          <div className="transfer-card-actions">
+            <button type="button" className="secondary" onClick={() => {}} title="Export (coming soon)">
+              <Download size={16} /> Export
+            </button>
+            <button type="button" onClick={openAddModal}>
+              + Create Transfer
+            </button>
+          </div>
+        </div>
+
+        {isLoading && <PageLoader message="Loading entries…" />}
+        {error && (
+          <div className="card error-card">
+            <p className="error">{(error as Error).message}</p>
+            <button type="button" onClick={() => refetch()}>Retry</button>
+          </div>
+        )}
+
+        {!isLoading && !error && data && filteredEntries.length === 0 && !isFetching && (
+          <EmptyState
+            title="No transfer entries found"
+            description="Try clearing filters or use Create Transfer above."
+          />
+        )}
+
+        {!isLoading && !error && (
           <div className="transfer-table-desktop data-table-wrap">
             <table className="data-list transfer-table">
+              <colgroup>
+                <col className="col-date" />
+                <col className="col-service" />
+                <col className="col-subtype" />
+                <col className="col-amount" />
+                <col className="col-status" />
+                <col className="col-action" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Service</th>
-                  <th>Sub-type</th>
-                  <th className="right">Amount (₹)</th>
-                  <th className="right">Action</th>
+                  <th className="col-date">Date</th>
+                  <th className="col-service">Service</th>
+                  <th className="col-subtype">Sub-type</th>
+                  <th className="col-amount">Amount (₹)</th>
+                  <th className="col-status">Status</th>
+                  <th className="col-action">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,20 +317,35 @@ export default function MoneyTransferPage() {
                     getTransferLabel(r.serviceKey);
                   return (
                     <tr key={r.id}>
-                      <td>{r.date}</td>
-                      <td><span className="transfer-service-name">{catLabel}</span></td>
-                      <td className="muted">{subLabel}</td>
-                      <td className="right">{formatMoney(r.amount)}</td>
-                      <td className="right">
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          title="Delete"
+                      <td className="col-date">
+                        <div className="transfer-datecell-date">{r.date}</div>
+                      </td>
+                      <td className="col-service">
+                        <span className="transfer-service-name">{catLabel}</span>
+                      </td>
+                      <td className="col-subtype muted">{subLabel}</td>
+                      <td className="col-amount">{formatMoney(r.amount)}</td>
+                      <td className="col-status">
+                        <span className="transfer-status">
+                          <span className="transfer-status-dot" aria-hidden="true" />
+                          <span className="ok">Success</span>
+                        </span>
+                      </td>
+                      <td className="col-action">
+                        <RowActionMenu
+                          open={openMenuId === r.id}
                           disabled={del.isPending}
-                          onClick={() => setDeleteTargetId(r.id)}
-                        >
-                          <MoreVertical size={16} />
-                        </button>
+                          onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
+                          onClose={() => setOpenMenuId(null)}
+                          items={[
+                            {
+                              key: "delete",
+                              label: "Delete",
+                              danger: true,
+                              onClick: () => setDeleteTargetId(r.id),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
@@ -318,7 +353,9 @@ export default function MoneyTransferPage() {
               </tbody>
             </table>
           </div>
+        )}
 
+        {!isLoading && !error && (
           <div className="transfer-card-list">
             {paged.map((r) => {
               const catId = getCategoryForKey(r.serviceKey);
@@ -336,63 +373,73 @@ export default function MoneyTransferPage() {
                     <strong>{formatMoney(r.amount)}</strong>
                   </div>
                   <div className="transfer-entry-card__foot">
+                    <span className="transfer-status">
+                      <span className="transfer-status-dot" aria-hidden="true" />
+                      <span className="ok">Success</span>
+                    </span>
                     <span className="muted">{r.date}</span>
-                    <button
-                      type="button"
-                      className="secondary transfer-entry-card__delete"
+                    <RowActionMenu
+                      open={openMenuId === r.id}
                       disabled={del.isPending}
-                      onClick={() => setDeleteTargetId(r.id)}
-                    >
-                      Delete
-                    </button>
+                      onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
+                      onClose={() => setOpenMenuId(null)}
+                      items={[
+                        {
+                          key: "delete",
+                          label: "Delete",
+                          danger: true,
+                          onClick: () => setDeleteTargetId(r.id),
+                        },
+                      ]}
+                    />
                   </div>
                 </article>
               );
             })}
           </div>
+        )}
 
-          <div className="transfer-footer">
-            <div className="transfer-footer-left muted">
-              Showing {filteredEntries.length ? `${showingFrom}-${showingTo}` : "0"} of {filteredEntries.length}
+        <div className="transfer-footer">
+          <div className="transfer-footer-left muted">
+            Showing {filteredEntries.length ? `${showingFrom}-${showingTo}` : "0"} of {filteredEntries.length}
+          </div>
+          <div className="transfer-footer-right">
+            <div className="transfer-pages muted" style={{ fontSize: 12 }}>
+              Page {safePage} / {localTotalPages}
             </div>
-            <div className="transfer-footer-right">
-              <div className="transfer-pages muted" style={{ fontSize: 12 }}>
-                Page {safePage} / {localTotalPages}
-              </div>
-              <div className="transfer-pages">
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={safePage <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={safePage >= localTotalPages}
-                  onClick={() => setPage((p) => Math.min(localTotalPages, p + 1))}
-                >
-                  Next
-                </button>
-              </div>
-              <select
-                className="transfer-page-size"
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value) as (typeof PAGE_SIZES)[number]);
-                  setPage(1);
-                }}
+            <div className="transfer-pages">
+              <button
+                type="button"
+                className="secondary"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
-                {PAGE_SIZES.map((s) => (
-                  <option key={s} value={s}>{s} / page</option>
-                ))}
-              </select>
+                Prev
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={safePage >= localTotalPages}
+                onClick={() => setPage((p) => Math.min(localTotalPages, p + 1))}
+              >
+                Next
+              </button>
             </div>
+            <select
+              className="transfer-page-size"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value) as (typeof PAGE_SIZES)[number]);
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZES.map((s) => (
+                <option key={s} value={s}>{s} / page</option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
+      </div>
 
       <FormModal open={open} title="Add money transfer" onClose={() => setOpen(false)}>
         <form
@@ -415,25 +462,24 @@ export default function MoneyTransferPage() {
             ))}
           </select>
 
-          <label className="stat-label">Sub-type</label>
-          <select
-            value={serviceKey}
-            onChange={(e) => handleSubServiceChange(e.target.value as TransferServiceKey)}
-          >
-            {subServices.map((s) => (
-              <option key={s.key} value={s.key}>{s.label}</option>
+          <div className="stat-label">Amount (₹) — leave blank for 0</div>
+          <div className="recharge-amount-grid">
+            {amountFields.map((field) => (
+              <label key={field.key} className="recharge-amount-field">
+                <span>{field.label}</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={amounts[field.key] ?? ""}
+                  onChange={(e) =>
+                    setAmounts((prev) => ({ ...prev, [field.key]: e.target.value }))
+                  }
+                />
+              </label>
             ))}
-          </select>
-
-          <label className="stat-label">Amount (₹)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            required
-          />
+          </div>
 
           {create.error && <p className="error">{(create.error as Error).message}</p>}
           <button type="submit" disabled={create.isPending}>

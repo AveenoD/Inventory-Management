@@ -256,5 +256,11 @@ export const api = {
     withAuth(() => client.getWithdrawals(monthId, page, limit, from, to)),
   getParties: (monthId: string, page?: number, search?: string) =>
     withAuth(() => client.getParties(monthId, page, search)),
+  getNotifications: (page?: number, limit?: number) =>
+    withAuth(() => client.getNotifications(page, limit)),
+  markNotificationRead: (id: string) =>
+    withAuth(() => client.markNotificationRead(id)),
+  markAllNotificationsRead: () =>
+    withAuth(() => client.markAllNotificationsRead()),
   health: () => client.health(),
 };

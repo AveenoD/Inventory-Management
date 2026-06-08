@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Banknote,
-  Bell,
   ChevronDown,
   CircleDollarSign,
   Package,
@@ -28,6 +27,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { NotificationInbox } from "@/components/ui/notification-inbox";
 import { getToken } from "@/lib/auth";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
@@ -220,13 +220,11 @@ export default function TodayPage() {
           <Link href="/sales/new" className="dash-topbar-action blue">
             + Add Sale
           </Link>
-          <Link href="/recharge" className="dash-topbar-action green">
-            + Recharge
+          <Link href="/repair?intake=1" className="dash-topbar-action orange">
+            + Repair
           </Link>
 
-          <button type="button" className="dash-icon-btn secondary" aria-label="Notifications">
-            <Bell size={16} />
-          </button>
+          <NotificationInbox />
         </div>
       </div>
 
@@ -362,7 +360,7 @@ export default function TodayPage() {
           <div className="dash-actions">
             <ActionLink href="/sales/new" title="+ New Sale" subtitle="Create invoice" variant="blue" />
             <ActionLink href="/recharge" title="+ Recharge" subtitle="Add recharge" variant="green" />
-            <ActionLink href="/repair" title="+ Repair" subtitle="Add repair job" variant="orange" />
+            <ActionLink href="/repair?intake=1" title="+ Repair" subtitle="Add repair job" variant="orange" />
             <ActionLink href="/inventory/new" title="+ Add Product" subtitle="New product" variant="purple" />
             <ActionLink href="/money-transfer" title="+ Money Transfer" subtitle="Add transfer" variant="teal" />
           </div>

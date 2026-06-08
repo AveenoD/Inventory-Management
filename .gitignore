@@ -4,8 +4,12 @@ node_modules/
 # Build outputs
 dist/
 build/
+build/android/*.apk
+build/android/*.aab
+*.zip
 .next/
 out/
+apps/web/out/
 
 # Environment (keep example files)
 .env

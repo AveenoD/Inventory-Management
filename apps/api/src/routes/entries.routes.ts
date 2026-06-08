@@ -29,6 +29,12 @@ import {
   rollupDatesForJob,
   validateRepairPartSelection,
 } from "../services/repair-workflow.service.js";
+import {
+  fireNotification,
+  notifyLowStockIfNeeded,
+  notifyRepairPickup,
+  notifyRepairReceived,
+} from "../services/notification.service.js";
 
 export const entriesRouter = Router({ mergeParams: true });
 entriesRouter.use(requireAuth);
@@ -361,6 +367,13 @@ entriesRouter.post("/repair-jobs/intake", async (req, res, next) => {
         note: body.note,
       },
     });
+    fireNotification(() =>
+      notifyRepairReceived(req.user!.userId, {
+        id: job.id,
+        customerName: job.customerName,
+        device: job.device,
+      }),
+    );
     res.status(201).json(mapRepairJobDto(job));
   } catch (e) {
     next(e);
@@ -443,6 +456,36 @@ entriesRouter.patch("/repair-jobs/:jobId", async (req, res, next) => {
     }
     for (const dte of rollupDatesForJob(job)) {
       await rollupRepairDay(mid, dte);
+    }
+    if (
+      body.status === "REPAIRED_PENDING_PICKUP" &&
+      existing.status !== "REPAIRED_PENDING_PICKUP"
+    ) {
+      fireNotification(() =>
+        notifyRepairPickup(req.user!.userId, {
+          id: job.id,
+          customerName: job.customerName,
+          device: job.device,
+        }),
+      );
+    }
+    if (body.status === "REPAIRED_PENDING_PICKUP" && body.partsUsed?.length) {
+      for (const part of body.partsUsed) {
+        const product = await prisma.product.findFirst({
+          where: { id: part.productId, userId: req.user!.userId },
+        });
+        if (product) {
+          fireNotification(() =>
+            notifyLowStockIfNeeded(
+              req.user!.userId,
+              product.id,
+              product.name,
+              product.stockQty,
+              product.minStock,
+            ),
+          );
+        }
+      }
     }
     res.json(mapRepairJobDto(job));
   } catch (e) {

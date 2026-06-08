@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   REPAIR_STATUS_LABELS,
@@ -46,6 +47,8 @@ function statusBadgeClass(status: string) {
 export default function RepairPage() {
   const { monthId } = useMonthContext();
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const today = new Date().toISOString().slice(0, 10);
   const [tab, setTab] = useState<Tab>("all");
   const [filterDate, setFilterDate] = useState("");
@@ -78,6 +81,12 @@ export default function RepairPage() {
     const t = setTimeout(() => setCustomerSearchDebounced(customerSearch.trim().toLowerCase()), 250);
     return () => clearTimeout(t);
   }, [customerSearch]);
+
+  useEffect(() => {
+    if (searchParams.get("intake") !== "1") return;
+    setIntakeOpen(true);
+    router.replace("/repair", { scroll: false });
+  }, [searchParams, router]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["repair-jobs", monthId, tabDef.status ?? "all", filterDate],

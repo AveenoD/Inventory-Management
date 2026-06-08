@@ -89,6 +89,20 @@ export function getSubServicesForCategory(categoryId: TransferCategoryId) {
   return cat?.subServices ?? [];
 }
 
+/** Sub-type amount inputs for a service category (DMT 99 → 5, DMT 86 → 6, IME → 2). */
+export function getTransferAmountFields(categoryId: TransferCategoryId) {
+  return getSubServicesForCategory(categoryId).map((sub) => ({
+    key: sub.key,
+    label: sub.label,
+  }));
+}
+
+export function emptyTransferAmounts(categoryId: TransferCategoryId): Record<string, string> {
+  return Object.fromEntries(
+    getSubServicesForCategory(categoryId).map((sub) => [sub.key, ""]),
+  );
+}
+
 export function isValidTransferServiceKey(key: string): key is TransferServiceKey {
   return (TRANSFER_SERVICE_KEYS as readonly string[]).includes(key);
 }

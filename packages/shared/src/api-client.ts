@@ -25,6 +25,11 @@ import type {
   PartyInput,
   PartyTransactionInput,
 } from "./schemas/entries.js";
+import type {
+  NotificationsResponse,
+  NotificationDto,
+  RegisterPushDeviceInput,
+} from "./schemas/notification.js";
 
 export class ApiError extends Error {
   constructor(
@@ -443,5 +448,20 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
       return body;
     },
+    getNotifications: (page = 1, limit = 20) =>
+      request<NotificationsResponse>(
+        `/api/v1/notifications?page=${page}&limit=${limit}`,
+      ),
+    markNotificationRead: (id: string) =>
+      request<NotificationDto>(`/api/v1/notifications/${id}/read`, {
+        method: "PATCH",
+      }),
+    markAllNotificationsRead: () =>
+      request<void>("/api/v1/notifications/read-all", { method: "PATCH" }),
+    registerPushDevice: (data: RegisterPushDeviceInput) =>
+      request<{ id: string; platform: string; lastSeenAt: string }>(
+        "/api/v1/notifications/devices",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
   };
 }

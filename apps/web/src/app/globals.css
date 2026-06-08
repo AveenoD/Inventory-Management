@@ -2517,7 +2517,23 @@ table.data-list th {
   align-items: center;
   gap: 0.65rem;
   flex-wrap: wrap;
+  flex: 1;
   min-width: 0;
+}
+
+.transfer-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.transfer-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
 }
 
 .transfer-date {
@@ -2548,8 +2564,49 @@ table.data-list th {
 }
 
 .transfer-table {
+  table-layout: fixed;
   width: 100%;
-  min-width: 560px;
+  min-width: 48rem;
+}
+
+.transfer-table col.col-date,
+.transfer-table col.col-service,
+.transfer-table col.col-subtype,
+.transfer-table col.col-amount,
+.transfer-table col.col-status,
+.transfer-table col.col-action {
+  width: 16.67%;
+}
+
+.transfer-table th,
+.transfer-table td {
+  padding: 0.85rem 1rem;
+  vertical-align: middle;
+}
+
+.transfer-table th {
+  white-space: nowrap;
+}
+
+.transfer-table .col-date,
+.transfer-table .col-service,
+.transfer-table .col-subtype {
+  text-align: left;
+}
+
+.transfer-table .col-amount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.transfer-table .col-status,
+.transfer-table .col-action {
+  text-align: center;
+}
+
+.money-transfer-page .data-table-wrap {
+  width: 100%;
 }
 
 .transfer-card-list {
@@ -2596,11 +2653,6 @@ table.data-list th {
   color: var(--muted);
   display: grid;
   place-items: center;
-}
-
-.transfer-table th.right,
-.transfer-table td.right {
-  text-align: right;
 }
 
 .transfer-datecell-date {
@@ -2728,12 +2780,29 @@ table.data-list th {
   }
 
   .transfer-card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
     width: 100%;
+  }
+
+  .transfer-card-actions > button:last-child {
+    grid-column: 1 / -1;
   }
 
   .transfer-card-actions button {
     width: 100%;
     justify-content: center;
+  }
+
+  .transfer-table {
+    font-size: 0.82rem;
+    min-width: 44rem;
+  }
+
+  .transfer-table th,
+  .transfer-table td {
+    padding: 0.7rem 0.85rem;
   }
 
   .transfer-table-desktop {
@@ -3698,6 +3767,13 @@ table.data-list th {
   padding: 0.3rem;
 }
 
+.row-action-dropdown--portal {
+  position: fixed;
+  right: auto;
+  top: auto;
+  z-index: 1200;
+}
+
 .row-action-dropdown button {
   width: 100%;
   justify-content: flex-start;
@@ -4109,6 +4185,16 @@ select {
 
 .dash-topbar-action.green:hover {
   background: rgba(34, 197, 94, 0.16);
+}
+
+.dash-topbar-action.orange {
+  background: rgba(245, 158, 11, 0.1);
+  color: #b45309;
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.dash-topbar-action.orange:hover {
+  background: rgba(245, 158, 11, 0.16);
 }
 
 .dash-summary-toggle {
@@ -4967,4 +5053,131 @@ select {
   .recharge-toolbar-left {
     grid-template-columns: 1fr;
   }
+}
+
+/* Notification inbox (dashboard bell) */
+.notif-bell-wrap {
+  position: relative;
+}
+
+.notif-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(360px, calc(100vw - 2rem));
+  z-index: 50;
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+}
+
+.notif-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.notif-panel-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.notif-panel-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.notif-mark-all {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.notif-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.notif-empty {
+  padding: 1.25rem 1rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.notif-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.notif-item.unread {
+  background: #f8fafc;
+}
+
+.notif-item strong {
+  display: block;
+  font-size: 0.875rem;
+  margin-bottom: 0.15rem;
+}
+
+.notif-item p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.notif-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.25rem;
+}
+
+.notif-type {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.notif-when {
+  font-size: 0.7rem;
+  color: var(--muted);
 }

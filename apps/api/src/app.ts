@@ -10,6 +10,7 @@ import { dailyRouter } from "./routes/daily.routes.js";
 import { inventoryRouter } from "./routes/inventory.routes.js";
 import { entriesRouter, partiesRouter } from "./routes/entries.routes.js";
 import { todayRouter } from "./routes/today.routes.js";
+import { notificationsRouter } from "./routes/notifications.routes.js";
 import { importRouter } from "./routes/import.routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestTimeout } from "./middleware/request-timeout.js";
@@ -87,6 +88,7 @@ export function createApp() {
 
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/today", todayRouter);
+  app.use("/api/v1/notifications", notificationsRouter);
   app.use("/api/v1/inventory", inventoryRouter);
   app.use("/api/v1/parties", partiesRouter);
   app.use("/api/v1/import", importRouter);

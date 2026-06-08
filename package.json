@@ -9,6 +9,9 @@
     "dev": "npm run dev --workspace=@sk-mobile/api & npm run dev --workspace=@sk-mobile/web",
     "dev:api": "npm run dev --workspace=@sk-mobile/api",
     "dev:web": "npm run dev --workspace=@sk-mobile/web",
+    "dev:mobile": "npm run start --workspace=@sk-mobile/mobile",
+    "build:mobile:preview": "npm run build:preview --workspace=@sk-mobile/mobile",
+    "build:mobile:production": "npm run build:production --workspace=@sk-mobile/mobile",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspace=@sk-mobile/api",
@@ -17,7 +20,9 @@
     "db:seed": "npm run db:seed --workspace=@sk-mobile/api",
     "db:reset-data": "npm run db:reset-data --workspace=@sk-mobile/api",
     "db:push": "npm run db:push --workspace=@sk-mobile/api",
-    "build:deploy": "npm run build --workspace=@sk-mobile/shared && npm run build --workspace=@sk-mobile/api && npm run build --workspace=@sk-mobile/web"
+    "build:deploy": "npm run build --workspace=@sk-mobile/shared && npm run build --workspace=@sk-mobile/api && npm run build --workspace=@sk-mobile/web",
+    "build:firebase": "node scripts/build-firebase.mjs",
+    "build:apk": "node scripts/build-android-apk.mjs"
   },
   "engines": {
     "node": ">=20"
