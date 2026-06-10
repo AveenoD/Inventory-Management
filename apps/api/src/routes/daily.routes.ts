@@ -8,12 +8,16 @@ import {
   bulkShopExpenseSchema,
   bulkDamageSchema,
   createExpenseEntrySchema,
+  updateExpenseEntrySchema,
+  deleteExpenseEntrySchema,
   bulkPartySchema,
   bulkUdhharSchema,
   bulkBankSchema,
   bulkWithdrawalSchema,
   createWithdrawalSchema,
+  updateWithdrawalSchema,
   paginationQuerySchema,
+  type ExpenseCategoryKey,
 } from "@sk-mobile/shared";
 import { getDashboard } from "../services/dashboard.service.js";
 import { prisma } from "../lib/prisma.js";
@@ -329,6 +333,99 @@ function mergeDescription(existing: string | null | undefined, next?: string) {
   return `${a} · ${b}`;
 }
 
+async function setExpenseCategorySlot(
+  mid: string,
+  day: Date,
+  category: ExpenseCategoryKey,
+  amount: ReturnType<typeof d>,
+  description?: string | null,
+) {
+  if (category === "ACCESSORIES_DAMAGE" || category === "REPAIRING_DAMAGE") {
+    const existing = await prisma.damageDay.findUnique({
+      where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+    });
+    const accessoriesAmount =
+      category === "ACCESSORIES_DAMAGE" ? amount : d(existing?.accessoriesAmount ?? 0);
+    const repairingAmount =
+      category === "REPAIRING_DAMAGE" ? amount : d(existing?.repairingAmount ?? 0);
+    const accessoriesDescription =
+      category === "ACCESSORIES_DAMAGE"
+        ? description?.trim() || null
+        : existing?.accessoriesDescription ?? null;
+    const repairingDescription =
+      category === "REPAIRING_DAMAGE"
+        ? description?.trim() || null
+        : existing?.repairingDescription ?? null;
+
+    return prisma.damageDay.upsert({
+      where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+      create: {
+        businessMonthId: mid,
+        date: day,
+        accessoriesDescription,
+        accessoriesAmount,
+        repairingDescription,
+        repairingAmount,
+        amount: fmt(accessoriesAmount.plus(repairingAmount)),
+      },
+      update: {
+        accessoriesDescription,
+        accessoriesAmount,
+        repairingDescription,
+        repairingAmount,
+        amount: fmt(accessoriesAmount.plus(repairingAmount)),
+      },
+    });
+  }
+
+  const existing = await prisma.shopExpenseDay.findUnique({
+    where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+  });
+
+  let salaryAmount = d(existing?.salaryAmount ?? 0);
+  let teaAmount = d(existing?.teaAmount ?? 0);
+  let shopExpAmount = d(existing?.shopExpAmount ?? 0);
+  let salaryDescription = existing?.salaryDescription ?? null;
+  let teaDescription = existing?.teaDescription ?? null;
+  let shopExpDescription = existing?.shopExpDescription ?? null;
+
+  if (category === "SALARY") {
+    salaryAmount = amount;
+    salaryDescription = description?.trim() || null;
+  } else if (category === "TEA") {
+    teaAmount = amount;
+    teaDescription = description?.trim() || null;
+  } else {
+    shopExpAmount = amount;
+    shopExpDescription = description?.trim() || null;
+  }
+
+  const total = fmt(salaryAmount.plus(teaAmount).plus(shopExpAmount));
+  return prisma.shopExpenseDay.upsert({
+    where: { businessMonthId_date: { businessMonthId: mid, date: day } },
+    create: {
+      businessMonthId: mid,
+      date: day,
+      salaryDescription,
+      salaryAmount,
+      teaDescription,
+      teaAmount,
+      shopExpDescription,
+      shopExpAmount,
+      total,
+    },
+    update: {
+      salaryDescription,
+      salaryAmount,
+      teaDescription,
+      teaAmount,
+      shopExpDescription,
+      shopExpAmount,
+      total,
+    },
+  });
+}
+
 dailyRouter.post("/expenses/entry", async (req, res, next) => {
   try {
     await guardMonth(req, req.user!.userId);
@@ -429,6 +526,38 @@ dailyRouter.post("/expenses/entry", async (req, res, next) => {
       },
     });
     res.status(201).json({ ok: true, data: serializeRow(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+dailyRouter.patch("/expenses/entry", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const body = updateExpenseEntrySchema.parse(req.body);
+    const day = parseDate(body.date);
+    const row = await setExpenseCategorySlot(
+      mid,
+      day,
+      body.category,
+      d(body.amount),
+      body.description,
+    );
+    res.json({ ok: true, data: serializeRow(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+dailyRouter.delete("/expenses/entry", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const body = deleteExpenseEntrySchema.parse(req.body);
+    const day = parseDate(body.date);
+    await setExpenseCategorySlot(mid, day, body.category, d(0), null);
+    res.status(204).end();
   } catch (e) {
     next(e);
   }
@@ -723,6 +852,69 @@ dailyRouter.post("/withdrawals", async (req, res, next) => {
     }
 
     res.status(201).json({ ok: true, amount: fmt(amount), availableProfit: fmt(availableProfit.minus(amount)) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+dailyRouter.patch("/withdrawals/:withdrawalId", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const body = updateWithdrawalSchema.parse(req.body);
+    const existing = await prisma.withdrawal.findFirst({
+      where: { id: req.params.withdrawalId, businessMonthId: mid },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Withdrawal not found" });
+      return;
+    }
+
+    const nextAmount = body.amount !== undefined ? d(body.amount) : d(existing.total);
+    if (body.amount !== undefined) {
+      const dash = await getDashboard(mid);
+      const availableProfit = d(dash.netProfit).plus(d(existing.total));
+      if (nextAmount.gt(availableProfit)) {
+        res.status(400).json({
+          error: `Insufficient profit. Available: ${fmt(availableProfit)}.`,
+        });
+        return;
+      }
+    }
+
+    const row = await prisma.withdrawal.update({
+      where: { id: existing.id },
+      data: {
+        ...(body.date && { date: parseDate(body.date) }),
+        ...(body.amount !== undefined && {
+          cash: nextAmount,
+          bank: d(0),
+          total: nextAmount,
+        }),
+        ...(body.description !== undefined && {
+          description: body.description?.trim() || "Withdrawal",
+        }),
+      },
+    });
+    res.json({ ok: true, data: serializeRow(row) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+dailyRouter.delete("/withdrawals/:withdrawalId", async (req, res, next) => {
+  try {
+    await guardMonth(req, req.user!.userId);
+    const mid = monthId(req);
+    const existing = await prisma.withdrawal.findFirst({
+      where: { id: req.params.withdrawalId, businessMonthId: mid },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Withdrawal not found" });
+      return;
+    }
+    await prisma.withdrawal.delete({ where: { id: existing.id } });
+    res.status(204).end();
   } catch (e) {
     next(e);
   }

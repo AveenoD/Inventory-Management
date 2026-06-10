@@ -10,7 +10,7 @@ import {
   rechargeEntryHasType,
   type RechargeOperator,
 } from "@sk-mobile/shared";
-import { Search, Smartphone, Zap, Trash2 } from "lucide-react-native";
+import { Search, Smartphone, Zap } from "lucide-react-native";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
 import { MonthGate } from "@/components/month-gate";
@@ -19,6 +19,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal, ModalActions } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
 import { GradientStatCard } from "@/components/ui/gradient-stat-card";
 import { MetricsGrid, MetricCell } from "@/components/ui/metrics-grid";
 import { PrimaryButton } from "@/components/ui/primary-button";
@@ -245,25 +246,34 @@ export default function RechargeScreen() {
           scrollEnabled={false}
           showsVerticalScrollIndicator={false}
           renderItem={({ item: r }) => (
-            <Pressable style={styles.rowCard} onPress={() => startEdit(r)}>
+            <View style={styles.rowCard}>
               <View style={styles.rowTop}>
-                <Text style={styles.operator}>{r.operator}</Text>
-                <Text style={styles.amount}>{formatMoney(r.amount)}</Text>
+                <View style={styles.rowTopMain}>
+                  <Text style={styles.operator}>{r.operator}</Text>
+                  <Text style={styles.amount}>{formatMoney(r.amount)}</Text>
+                </View>
+                <RowActionMenu
+                  disabled={del.isPending || update.isPending}
+                  items={[
+                    {
+                      key: "edit",
+                      label: "Edit",
+                      onPress: () => startEdit(r),
+                    },
+                    {
+                      key: "delete",
+                      label: "Delete",
+                      danger: true,
+                      onPress: () => setDeleteTargetId(r.id),
+                    },
+                  ]}
+                />
               </View>
               <Badge label={formatRechargeTypeLabel(r)} tone="default" />
               <Text style={styles.meta}>
                 {r.date} · Profit: {formatProfitBreakdown(r)}
               </Text>
-              <Pressable
-                style={styles.deleteBtn}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  setDeleteTargetId(r.id);
-                }}
-              >
-                <Trash2 size={16} color={colors.red} />
-              </Pressable>
-            </Pressable>
+            </View>
           )}
         />
       ) : null}
@@ -288,8 +298,13 @@ export default function RechargeScreen() {
             ))}
           </Picker>
         </View>
-        <FieldLabel>Recharge amount</FieldLabel>
-        <TextField value={rechargeAmount} onChangeText={setRechargeAmount} keyboardType="numeric" />
+        <FieldLabel optional>Recharge amount</FieldLabel>
+        <TextField
+          value={rechargeAmount}
+          onChangeText={setRechargeAmount}
+          keyboardType="numeric"
+          placeholder="Optional"
+        />
         {RECHARGE_AMOUNT_FIELDS.map((f) => (
           <View key={f.key}>
             <FieldLabel optional>{f.label}</FieldLabel>
@@ -378,9 +393,14 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  operator: { fontWeight: "700", fontSize: 16, color: colors.text },
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  rowTopMain: { flex: 1, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  operator: { fontWeight: "700", fontSize: 16, color: colors.text, flex: 1 },
   amount: { fontWeight: "700", fontSize: 16, color: colors.text },
   meta: { marginTop: spacing.sm, fontSize: 13, color: colors.muted },
-  deleteBtn: { position: "absolute", right: spacing.md, bottom: spacing.md },
 });

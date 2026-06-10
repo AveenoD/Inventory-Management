@@ -97,6 +97,11 @@ export const api = {
     monthId: string,
     data: Parameters<typeof client.createTransferEntry>[1],
   ) => withAuth(() => client.createTransferEntry(monthId, data)),
+  updateTransferEntry: (
+    monthId: string,
+    entryId: string,
+    data: Parameters<typeof client.updateTransferEntry>[2],
+  ) => withAuth(() => client.updateTransferEntry(monthId, entryId, data)),
   deleteTransferEntry: (monthId: string, entryId: string) =>
     withAuth(() => client.deleteTransferEntry(monthId, entryId)),
   getRepairJobs: (
@@ -128,10 +133,23 @@ export const api = {
     monthId: string,
     body: { date: string; category: string; amount: number; description?: string },
   ) => withAuth(() => client.createExpenseEntry(monthId, body)),
+  updateExpenseEntry: (
+    monthId: string,
+    body: { date: string; category: string; amount: number; description?: string },
+  ) => withAuth(() => client.updateExpenseEntry(monthId, body)),
+  deleteExpenseEntry: (monthId: string, body: { date: string; category: string }) =>
+    withAuth(() => client.deleteExpenseEntry(monthId, body)),
   createWithdrawal: (
     monthId: string,
     body: { date: string; amount: number; description?: string },
   ) => withAuth(() => client.createWithdrawal(monthId, body)),
+  updateWithdrawal: (
+    monthId: string,
+    withdrawalId: string,
+    body: { date?: string; amount?: number; description?: string },
+  ) => withAuth(() => client.updateWithdrawal(monthId, withdrawalId, body)),
+  deleteWithdrawal: (monthId: string, withdrawalId: string) =>
+    withAuth(() => client.deleteWithdrawal(monthId, withdrawalId)),
   getPartyList: () => withAuth(() => client.getPartyList()),
   createParty: (data: Parameters<typeof client.createParty>[0]) =>
     withAuth(() => client.createParty(data)),

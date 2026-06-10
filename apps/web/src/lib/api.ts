@@ -145,6 +145,11 @@ export const api = {
     monthId: string,
     data: Parameters<typeof client.createTransferEntry>[1],
   ) => withAuth(() => client.createTransferEntry(monthId, data)),
+  updateTransferEntry: (
+    monthId: string,
+    entryId: string,
+    data: Parameters<typeof client.updateTransferEntry>[2],
+  ) => withAuth(() => client.updateTransferEntry(monthId, entryId, data)),
   deleteTransferEntry: (monthId: string, entryId: string) =>
     withAuth(() => client.deleteTransferEntry(monthId, entryId)),
   getRepairJobs: (
@@ -212,6 +217,17 @@ export const api = {
         body: JSON.stringify(body),
       }),
     ),
+  updateExpenseEntry: (
+    monthId: string,
+    body: { date: string; category: string; amount: number; description?: string },
+  ) => withAuth(() => client.updateExpenseEntry(monthId, body)),
+  deleteExpenseEntry: (monthId: string, body: { date: string; category: string }) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/months/${monthId}/expenses/entry`, {
+        method: "DELETE",
+        body: JSON.stringify(body),
+      }),
+    ),
   getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
     withAuth(() => client.getShopExpenses(monthId, page, limit, from, to)),
   bulkDamage: (monthId: string, entries: unknown[]) =>
@@ -251,6 +267,17 @@ export const api = {
           body: JSON.stringify(body),
         },
       ),
+    ),
+  updateWithdrawal: (
+    monthId: string,
+    withdrawalId: string,
+    body: { date?: string; amount?: number; description?: string },
+  ) => withAuth(() => client.updateWithdrawal(monthId, withdrawalId, body)),
+  deleteWithdrawal: (monthId: string, withdrawalId: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/months/${monthId}/withdrawals/${withdrawalId}`, {
+        method: "DELETE",
+      }),
     ),
   getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
     withAuth(() => client.getWithdrawals(monthId, page, limit, from, to)),

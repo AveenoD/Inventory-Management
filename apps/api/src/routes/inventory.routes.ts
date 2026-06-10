@@ -340,7 +340,7 @@ inventoryRouter.post("/products", async (req, res, next) => {
         body.coverTypeName,
       );
       if (!ct) {
-        res.status(400).json({ error: "Cover type is required" });
+        res.status(400).json({ error: "Cover category is required" });
         return;
       }
       coverTypeId = ct.id;

@@ -11,7 +11,7 @@ import {
   type TransferCategoryId,
   type TransferServiceKey,
 } from "@sk-mobile/shared";
-import { Search, Trash2 } from "lucide-react-native";
+import { Pencil, Search, Trash2 } from "lucide-react-native";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
 import { MonthGate } from "@/components/month-gate";
@@ -38,6 +38,25 @@ type TransferRow = {
 
 const DEFAULT_CATEGORY: TransferCategoryId = "dmt99";
 
+type EditDraft = {
+  date: string;
+  categoryId: TransferCategoryId;
+  serviceKey: TransferServiceKey;
+  amount: string;
+  note: string;
+};
+
+function rowToEditDraft(row: TransferRow): EditDraft {
+  const categoryId = getCategoryForKey(row.serviceKey) ?? DEFAULT_CATEGORY;
+  return {
+    date: row.date,
+    categoryId,
+    serviceKey: row.serviceKey as TransferServiceKey,
+    amount: row.amount,
+    note: row.note ?? "",
+  };
+}
+
 function emptyAmountsFor(categoryId: TransferCategoryId): Record<string, string> {
   return Object.fromEntries(
     getSubServicesForCategory(categoryId).map((sub) => [sub.key, ""]),
@@ -60,6 +79,8 @@ export default function TransferScreen() {
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -110,12 +131,30 @@ export default function TransferScreen() {
     },
   });
 
+  const update = useMutation({
+    mutationFn: ({ entryId, draft }: { entryId: string; draft: EditDraft }) =>
+      api.updateTransferEntry(monthId!, entryId, {
+        date: draft.date,
+        serviceKey: draft.serviceKey,
+        amount: parseMoneyInput(draft.amount),
+        note: draft.note || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      setEditingId(null);
+      setEditDraft(null);
+      update.reset();
+    },
+  });
+
   const del = useMutation({
     mutationFn: (entryId: string) => api.deleteTransferEntry(monthId!, entryId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
       setDeleteTargetId(null);
+      del.reset();
     },
   });
 
@@ -146,6 +185,42 @@ export default function TransferScreen() {
     setDate(today);
     setOpen(true);
   }
+
+  function startEdit(row: TransferRow) {
+    setEditingId(row.id);
+    setEditDraft(rowToEditDraft(row));
+  }
+
+  function closeEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+    update.reset();
+  }
+
+  function handleEditCategoryChange(nextCategory: TransferCategoryId) {
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      const subs = getSubServicesForCategory(nextCategory);
+      return {
+        ...prev,
+        categoryId: nextCategory,
+        serviceKey: (subs[0]?.key ?? prev.serviceKey) as TransferServiceKey,
+      };
+    });
+  }
+
+  const editSubServices = useMemo(() => {
+    if (!editDraft) return [];
+    const subs = getSubServicesForCategory(editDraft.categoryId);
+    if (subs.some((s) => s.key === editDraft.serviceKey)) return subs;
+    return [
+      ...subs,
+      {
+        key: editDraft.serviceKey,
+        label: getTransferLabel(editDraft.serviceKey).replace(/^[^—]+ — /, ""),
+      },
+    ];
+  }, [editDraft]);
 
   const content = (
     <>
@@ -239,7 +314,7 @@ export default function TransferScreen() {
               TRANSFER_SERVICES.find((s) => s.key === r.serviceKey)?.subLabel ??
               getTransferLabel(r.serviceKey);
             return (
-              <View style={styles.rowCard}>
+              <Pressable style={styles.rowCard} onPress={() => startEdit(r)}>
                 <View style={styles.rowTop}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.serviceName}>{catLabel}</Text>
@@ -249,11 +324,28 @@ export default function TransferScreen() {
                 </View>
                 <View style={styles.rowFoot}>
                   <Text style={styles.date}>{r.date}</Text>
-                  <Pressable onPress={() => setDeleteTargetId(r.id)}>
-                    <Trash2 size={16} color={colors.red} />
-                  </Pressable>
+                  <View style={styles.rowActions}>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        startEdit(r);
+                      }}
+                    >
+                      <Pencil size={16} color={colors.accent} />
+                    </Pressable>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        setDeleteTargetId(r.id);
+                      }}
+                    >
+                      <Trash2 size={16} color={colors.red} />
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
+              </Pressable>
             );
           }}
         />
@@ -295,12 +387,73 @@ export default function TransferScreen() {
         />
       </FormModal>
 
+      <FormModal visible={!!editingId && !!editDraft} title="Edit money transfer" onClose={closeEdit}>
+        {editDraft ? (
+          <>
+            <DateField
+              value={editDraft.date}
+              onChange={(v) => setEditDraft((prev) => (prev ? { ...prev, date: v } : prev))}
+              label="Date"
+            />
+            <FieldLabel>Service</FieldLabel>
+            <View style={styles.pickerWrap}>
+              <Picker
+                selectedValue={editDraft.categoryId}
+                onValueChange={(v) => handleEditCategoryChange(v as TransferCategoryId)}
+              >
+                {TRANSFER_CATEGORIES.map((c) => (
+                  <Picker.Item key={c.id} label={c.label} value={c.id} />
+                ))}
+              </Picker>
+            </View>
+            <FieldLabel>Sub-type</FieldLabel>
+            <View style={styles.pickerWrap}>
+              <Picker
+                selectedValue={editDraft.serviceKey}
+                onValueChange={(v) =>
+                  setEditDraft((prev) =>
+                    prev ? { ...prev, serviceKey: v as TransferServiceKey } : prev,
+                  )
+                }
+              >
+                {editSubServices.map((s) => (
+                  <Picker.Item key={s.key} label={s.label} value={s.key} />
+                ))}
+              </Picker>
+            </View>
+            <FieldLabel>Amount (₹)</FieldLabel>
+            <TextField
+              value={editDraft.amount}
+              onChangeText={(v) => setEditDraft((prev) => (prev ? { ...prev, amount: v } : prev))}
+              keyboardType="numeric"
+            />
+            <FieldLabel optional>Note</FieldLabel>
+            <TextField
+              value={editDraft.note}
+              onChangeText={(v) => setEditDraft((prev) => (prev ? { ...prev, note: v } : prev))}
+            />
+            {update.error ? (
+              <Text style={styles.error}>{(update.error as Error).message}</Text>
+            ) : null}
+            <ModalActions
+              onCancel={closeEdit}
+              onConfirm={() => editingId && editDraft && update.mutate({ entryId: editingId, draft: editDraft })}
+              confirmLabel="Save changes"
+              loading={update.isPending}
+            />
+          </>
+        ) : null}
+      </FormModal>
+
       <ConfirmDialog
         visible={!!deleteTargetId}
         title="Delete transfer?"
         message="Remove this money transfer entry permanently?"
         loading={del.isPending}
-        onCancel={() => setDeleteTargetId(null)}
+        onCancel={() => {
+          setDeleteTargetId(null);
+          del.reset();
+        }}
         onConfirm={() => deleteTargetId && del.mutate(deleteTargetId)}
       />
     </>
@@ -379,4 +532,5 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   date: { fontSize: 13, color: colors.muted },
+  rowActions: { flexDirection: "row", alignItems: "center", gap: spacing.md },
 });

@@ -96,6 +96,8 @@ export function RowActionMenu({
     const onPointerDown = (e: MouseEvent) => {
       const target = e.target as Node;
       if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      // Another RowActionMenu instance may own the open portal (e.g. desktop + mobile lists).
+      if (target instanceof Element && target.closest(".row-action-dropdown--portal")) return;
       onClose();
     };
     document.addEventListener("mousedown", onPointerDown);
@@ -110,6 +112,7 @@ export function RowActionMenu({
             className="row-action-dropdown row-action-dropdown--portal"
             role="menu"
             style={{ top: coords.top, left: coords.left }}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             {items.map((item) => (
               <button
@@ -117,9 +120,11 @@ export function RowActionMenu({
                 type="button"
                 role="menuitem"
                 className={item.danger ? "danger-text" : undefined}
-                onClick={() => {
-                  onClose();
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   item.onClick();
+                  onClose();
                 }}
               >
                 {item.label}

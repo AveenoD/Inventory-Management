@@ -223,9 +223,10 @@ export default function InventoryScreen() {
 
       {filter === "COVERS" ? (
         <View style={styles.filterCard}>
+          <Text style={styles.filterLabel}>Cover category</Text>
           <View style={styles.pickerWrap}>
             <Picker selectedValue={coverTypeName} onValueChange={setCoverTypeName}>
-              <Picker.Item label="All cover types" value="" />
+              <Picker.Item label="All cover categories" value="" />
               {[...new Set((coverTypesData?.data ?? []).map((t) => t.name))].map((name) => (
                 <Picker.Item key={name} label={name} value={name} />
               ))}
@@ -444,6 +445,7 @@ const styles = StyleSheet.create({
   tabText: { color: colors.muted, fontWeight: "600", fontSize: 13 },
   tabTextActive: { color: colors.accent },
   filterCard: { gap: spacing.sm, marginBottom: spacing.md },
+  filterLabel: { fontSize: 12, fontWeight: "600", color: colors.muted },
   pickerWrap: {
     borderWidth: 1,
     borderColor: colors.border,

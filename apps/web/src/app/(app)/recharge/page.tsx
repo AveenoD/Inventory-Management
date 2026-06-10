@@ -556,17 +556,16 @@ export default function RechargePage() {
               ))}
             </select>
 
-            <label className="stat-label">Recharge Amount (₹)</label>
+            <label className="stat-label">Recharge Amount (₹) — optional</label>
             <input
               type="number"
               step="0.01"
-              min="0.01"
-              placeholder="e.g. 249 or 299"
+              min="0"
+              placeholder="e.g. 249 or 299 (optional)"
               value={editDraft.rechargeAmount}
               onChange={(e) =>
                 setEditDraft((prev) => (prev ? { ...prev, rechargeAmount: e.target.value } : prev))
               }
-              required
             />
 
             <div className="stat-label">Income (₹) — leave blank for 0</div>
@@ -614,15 +613,14 @@ export default function RechargePage() {
             ))}
           </select>
 
-          <label className="stat-label">Recharge Amount (₹)</label>
+          <label className="stat-label">Recharge Amount (₹) — optional</label>
           <input
             type="number"
             step="0.01"
-            min="0.01"
-            placeholder="e.g. 249 or 299"
+            min="0"
+            placeholder="e.g. 249 or 299 (optional)"
             value={rechargeAmount}
             onChange={(e) => setRechargeAmount(e.target.value)}
-            required
           />
 
           <div className="stat-label">Income (₹) — leave blank for 0</div>

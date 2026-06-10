@@ -70,6 +70,11 @@ export function clearFinancials() {
 
 export type StatusUpdateInput = {
   status: RepairJobStatus;
+  date?: string;
+  customerName?: string;
+  customerPhone?: string;
+  device?: string;
+  issueDescription?: string;
   /** legacy alias for parts cost (older clients) */
   repairCost?: number;
   /** legacy alias for sale price (older clients) */
@@ -179,14 +184,34 @@ export function buildStatusUpdateData(
       ...clearFinancials(),
       deliveredAt: null,
       note: input.note ?? current.note,
+      ...(input.date && { date: new Date(`${input.date}T00:00:00.000Z`) }),
+      ...(input.customerName !== undefined && { customerName: input.customerName }),
+      ...(input.customerPhone !== undefined && { customerPhone: input.customerPhone || null }),
+      ...(input.device !== undefined && { device: input.device }),
+      ...(input.issueDescription !== undefined && { issueDescription: input.issueDescription }),
     };
   }
 
   if (status === "RECEIVED" || status === "IN_PROGRESS") {
+    const partsCost =
+      input.repairCost ?? input.partsCost ?? Number(current.partsCost);
+    const labourCost = input.labourCost ?? Number(current.labourCost);
+    const salePrice =
+      input.customerCharge ?? input.salePrice ?? Number(current.salePrice);
+    const { profitVal } = financialsForRepair(partsCost, labourCost, salePrice);
     return {
       status,
       deliveredAt: null,
       note: input.note ?? current.note,
+      ...(input.date && { date: new Date(`${input.date}T00:00:00.000Z`) }),
+      ...(input.customerName !== undefined && { customerName: input.customerName }),
+      ...(input.customerPhone !== undefined && { customerPhone: input.customerPhone || null }),
+      ...(input.device !== undefined && { device: input.device }),
+      ...(input.issueDescription !== undefined && { issueDescription: input.issueDescription }),
+      partsCost,
+      labourCost,
+      salePrice,
+      profit: profitVal,
     };
   }
 
@@ -212,6 +237,11 @@ export function buildStatusUpdateData(
       profit: profitVal,
       deliveredAt: null,
       note: input.note ?? current.note,
+      ...(input.date && { date: new Date(`${input.date}T00:00:00.000Z`) }),
+      ...(input.customerName !== undefined && { customerName: input.customerName }),
+      ...(input.customerPhone !== undefined && { customerPhone: input.customerPhone || null }),
+      ...(input.device !== undefined && { device: input.device }),
+      ...(input.issueDescription !== undefined && { issueDescription: input.issueDescription }),
       otherPartUsed:
         (input.partsUsed?.length ?? 0) > 0
           ? null
@@ -229,6 +259,10 @@ export function buildStatusUpdateData(
       status,
       deliveredAt: new Date(`${deliveredStr}T00:00:00.000Z`),
       note: input.note ?? current.note,
+      ...(input.customerName !== undefined && { customerName: input.customerName }),
+      ...(input.customerPhone !== undefined && { customerPhone: input.customerPhone || null }),
+      ...(input.device !== undefined && { device: input.device }),
+      ...(input.issueDescription !== undefined && { issueDescription: input.issueDescription }),
     };
   }
 

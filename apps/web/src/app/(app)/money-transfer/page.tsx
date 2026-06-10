@@ -34,6 +34,25 @@ type TransferRow = {
 const PAGE_SIZES = [10, 25, 50] as const;
 const DEFAULT_CATEGORY: TransferCategoryId = "dmt99";
 
+type EditDraft = {
+  date: string;
+  categoryId: TransferCategoryId;
+  serviceKey: TransferServiceKey;
+  amount: string;
+  note: string;
+};
+
+function rowToEditDraft(row: TransferRow): EditDraft {
+  const categoryId = getCategoryForKey(row.serviceKey) ?? DEFAULT_CATEGORY;
+  return {
+    date: row.date,
+    categoryId,
+    serviceKey: row.serviceKey as TransferServiceKey,
+    amount: row.amount,
+    note: row.note ?? "",
+  };
+}
+
 function emptyAmountsFor(categoryId: TransferCategoryId): Record<string, string> {
   return Object.fromEntries(
     getSubServicesForCategory(categoryId).map((sub) => [sub.key, ""]),
@@ -60,6 +79,8 @@ export default function MoneyTransferPage() {
   const [searchDebounced, setSearchDebounced] = useState("");
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim().toLowerCase()), 250);
@@ -118,6 +139,23 @@ export default function MoneyTransferPage() {
     },
   });
 
+  const update = useMutation({
+    mutationFn: ({ entryId, draft }: { entryId: string; draft: EditDraft }) =>
+      api.updateTransferEntry(monthId!, entryId, {
+        date: draft.date,
+        serviceKey: draft.serviceKey,
+        amount: parseMoneyInput(draft.amount),
+        note: draft.note || undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfer-entries", monthId] });
+      qc.invalidateQueries({ queryKey: ["today"] });
+      setEditingId(null);
+      setEditDraft(null);
+      update.reset();
+    },
+  });
+
   const del = useMutation({
     mutationFn: (entryId: string) => api.deleteTransferEntry(monthId!, entryId),
     onSuccess: () => {
@@ -127,6 +165,43 @@ export default function MoneyTransferPage() {
       setOpenMenuId(null);
     },
   });
+
+  function startEdit(row: TransferRow) {
+    setEditingId(row.id);
+    setEditDraft(rowToEditDraft(row));
+    setOpenMenuId(null);
+  }
+
+  function closeEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+    update.reset();
+  }
+
+  function handleEditCategoryChange(nextCategory: TransferCategoryId) {
+    setEditDraft((prev) => {
+      if (!prev) return prev;
+      const subs = getSubServicesForCategory(nextCategory);
+      return {
+        ...prev,
+        categoryId: nextCategory,
+        serviceKey: (subs[0]?.key ?? prev.serviceKey) as TransferServiceKey,
+      };
+    });
+  }
+
+  const editSubServices = useMemo(() => {
+    if (!editDraft) return [];
+    const subs = getSubServicesForCategory(editDraft.categoryId);
+    if (subs.some((s) => s.key === editDraft.serviceKey)) return subs;
+    return [
+      ...subs,
+      {
+        key: editDraft.serviceKey,
+        label: getTransferLabel(editDraft.serviceKey).replace(/^[^—]+ — /, ""),
+      },
+    ];
+  }, [editDraft]);
 
   const filteredEntries = useMemo(() => {
     return entries.filter((e) => {
@@ -334,15 +409,23 @@ export default function MoneyTransferPage() {
                       <td className="col-action">
                         <RowActionMenu
                           open={openMenuId === r.id}
-                          disabled={del.isPending}
+                          disabled={del.isPending || update.isPending}
                           onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
                           onClose={() => setOpenMenuId(null)}
                           items={[
                             {
+                              key: "edit",
+                              label: "Edit",
+                              onClick: () => startEdit(r),
+                            },
+                            {
                               key: "delete",
                               label: "Delete",
                               danger: true,
-                              onClick: () => setDeleteTargetId(r.id),
+                              onClick: () => {
+                                setOpenMenuId(null);
+                                setDeleteTargetId(r.id);
+                              },
                             },
                           ]}
                         />
@@ -380,15 +463,23 @@ export default function MoneyTransferPage() {
                     <span className="muted">{r.date}</span>
                     <RowActionMenu
                       open={openMenuId === r.id}
-                      disabled={del.isPending}
+                      disabled={del.isPending || update.isPending}
                       onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
                       onClose={() => setOpenMenuId(null)}
                       items={[
                         {
+                          key: "edit",
+                          label: "Edit",
+                          onClick: () => startEdit(r),
+                        },
+                        {
                           key: "delete",
                           label: "Delete",
                           danger: true,
-                          onClick: () => setDeleteTargetId(r.id),
+                          onClick: () => {
+                            setOpenMenuId(null);
+                            setDeleteTargetId(r.id);
+                          },
                         },
                       ]}
                     />
@@ -441,6 +532,76 @@ export default function MoneyTransferPage() {
         </div>
       </div>
 
+      <FormModal open={!!editingId && !!editDraft} title="Edit money transfer" onClose={closeEdit}>
+        {editDraft && (
+          <form
+            className="form-stack"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingId) update.mutate({ entryId: editingId, draft: editDraft });
+            }}
+          >
+            <label className="stat-label">Date</label>
+            <input
+              type="date"
+              value={editDraft.date}
+              onChange={(e) =>
+                setEditDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+              }
+            />
+
+            <label className="stat-label">Service</label>
+            <select
+              value={editDraft.categoryId}
+              onChange={(e) => handleEditCategoryChange(e.target.value as TransferCategoryId)}
+            >
+              {TRANSFER_CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+
+            <label className="stat-label">Sub-type</label>
+            <select
+              value={editDraft.serviceKey}
+              onChange={(e) =>
+                setEditDraft((prev) =>
+                  prev ? { ...prev, serviceKey: e.target.value as TransferServiceKey } : prev,
+                )
+              }
+            >
+              {editSubServices.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+
+            <label className="stat-label">Amount (₹)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={editDraft.amount}
+              onChange={(e) =>
+                setEditDraft((prev) => (prev ? { ...prev, amount: e.target.value } : prev))
+              }
+              required
+            />
+
+            <label className="stat-label">Note (optional)</label>
+            <input
+              value={editDraft.note}
+              onChange={(e) =>
+                setEditDraft((prev) => (prev ? { ...prev, note: e.target.value } : prev))
+              }
+            />
+
+            {update.error && <p className="error">{(update.error as Error).message}</p>}
+            <button type="submit" disabled={update.isPending}>
+              {update.isPending ? "Saving…" : "Save changes"}
+            </button>
+          </form>
+        )}
+      </FormModal>
+
       <FormModal open={open} title="Add money transfer" onClose={() => setOpen(false)}>
         <form
           className="form-stack"
@@ -492,8 +653,12 @@ export default function MoneyTransferPage() {
         open={!!deleteTargetId}
         title="Delete transfer?"
         message="Remove this money transfer entry permanently? This cannot be undone."
+        error={del.error ? (del.error as Error).message : null}
         loading={del.isPending}
-        onCancel={() => setDeleteTargetId(null)}
+        onCancel={() => {
+          setDeleteTargetId(null);
+          del.reset();
+        }}
         onConfirm={() => deleteTargetId && del.mutate(deleteTargetId)}
       />
     </div>

@@ -14,7 +14,7 @@ type AddProductMode = "cover" | "other_accessory" | "device" | "repair";
 type DeviceKind = Extract<ProductKind, "MOBILE" | "SPEAKERS_SOUND" | "CHARGER_CABLE">;
 
 const MODES: Array<{ id: AddProductMode; label: string; hint: string }> = [
-  { id: "cover", label: "Mobile Cover", hint: "Model → cover type → design" },
+  { id: "cover", label: "Mobile Cover", hint: "Model → cover category → design" },
   { id: "other_accessory", label: "Other Accessory", hint: "Pendrive, earphone, glass…" },
   { id: "device", label: "Mobile / Audio / Cable", hint: "Phones, speakers, chargers" },
   { id: "repair", label: "Repair Part", hint: "Display, battery, charging pin…" },
@@ -293,7 +293,7 @@ export function ProductForm() {
         return;
       }
       if (!coverTypeId) {
-        setFormError("Step 2: Select a cover type or add a new one.");
+        setFormError("Step 2: Select a cover category or add a new one.");
         return;
       }
       if (!variantName.trim()) {
@@ -346,7 +346,7 @@ export function ProductForm() {
     mode === "cover"
       ? [
           { n: 1, label: "Phone model" },
-          { n: 2, label: "Cover type" },
+          { n: 2, label: "Cover category" },
           { n: 3, label: "Design" },
           { n: 4, label: "Price & stock" },
         ]
@@ -414,9 +414,9 @@ export function ProductForm() {
             />
           </FormStep>
 
-          <FormStep step={2} title="Cover type" locked={coverStep2Locked}>
+          <FormStep step={2} title="Cover category" locked={coverStep2Locked}>
             <select value={coverTypeId} onChange={(e) => setCoverTypeId(e.target.value)}>
-              <option value="">Select cover type</option>
+              <option value="">Select cover category</option>
               {coverList.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -424,7 +424,7 @@ export function ProductForm() {
               ))}
             </select>
             <InlineAddField
-              triggerLabel="Add new cover type"
+              triggerLabel="Add new cover category"
               placeholder="e.g. Matte, Ring Light"
               value={newCoverType}
               onChange={setNewCoverType}
@@ -441,7 +441,7 @@ export function ProductForm() {
               placeholder="e.g. Blue Marble, Tiger Print, Plain Black"
             />
             <p className="muted form-step__hint">
-              Name auto: Model – Cover type – Design (e.g. Samsung J7 – Silicon – Blue Marble)
+              Name auto: Model – Cover category – Design (e.g. Samsung J7 – Silicon – Blue Marble)
             </p>
           </FormStep>
         </>

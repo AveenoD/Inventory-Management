@@ -157,6 +157,19 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
         method: "POST",
         body: JSON.stringify(body),
       }),
+    updateExpenseEntry: (
+      monthId: string,
+      body: { date: string; category: string; amount: number; description?: string },
+    ) =>
+      request(`/api/v1/months/${monthId}/expenses/entry`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    deleteExpenseEntry: (monthId: string, body: { date: string; category: string }) =>
+      request(`/api/v1/months/${monthId}/expenses/entry`, {
+        method: "DELETE",
+        body: JSON.stringify(body),
+      }),
     getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) q.set("from", from);
@@ -222,6 +235,17 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
           body: JSON.stringify(body),
         },
       ),
+    updateWithdrawal: (
+      monthId: string,
+      withdrawalId: string,
+      body: { date?: string; amount?: number; description?: string },
+    ) =>
+      request(`/api/v1/months/${monthId}/withdrawals/${withdrawalId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    deleteWithdrawal: (monthId: string, withdrawalId: string) =>
+      request(`/api/v1/months/${monthId}/withdrawals/${withdrawalId}`, { method: "DELETE" }),
     getWithdrawals: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) q.set("from", from);
@@ -385,6 +409,11 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
     createTransferEntry: (monthId: string, data: TransferEntryInput) =>
       request(`/api/v1/months/${monthId}/transfer-entries`, {
         method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateTransferEntry: (monthId: string, entryId: string, data: TransferEntryInput) =>
+      request(`/api/v1/months/${monthId}/transfer-entries/${entryId}`, {
+        method: "PATCH",
         body: JSON.stringify(data),
       }),
     deleteTransferEntry: (monthId: string, entryId: string) =>

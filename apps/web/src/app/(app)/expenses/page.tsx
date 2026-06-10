@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   EXPENSE_CATEGORIES,
-  getExpenseCategoryLabel,
+  buildExpenseLineItems,
   type ExpenseCategoryKey,
+  type ExpenseLineItem,
 } from "@sk-mobile/shared";
 import { useMonthContext } from "@/contexts/month-context";
 import { MonthGate } from "@/components/month-gate";
@@ -14,9 +15,30 @@ import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
 import { api } from "@/lib/api";
 import { Calendar, Download, Filter, Plus } from "lucide-react";
+
+type EditDraft = {
+  date: string;
+  categoryKey: ExpenseCategoryKey | "WITHDRAWAL";
+  amount: string;
+  description: string;
+};
+
+function lineToEditDraft(row: ExpenseLineItem): EditDraft {
+  const label = row.type;
+  const desc =
+    row.description && row.description !== label ? row.description : "";
+  return {
+    date: row.date,
+    categoryKey: row.categoryKey,
+    amount: String(row.amount),
+    description: desc,
+  };
+}
 
 export default function ExpensesPage() {
   const { year, month, monthId } = useMonthContext();
@@ -40,6 +62,10 @@ export default function ExpensesPage() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseError, setExpenseError] = useState("");
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingRow, setEditingRow] = useState<ExpenseLineItem | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExpenseLineItem | null>(null);
 
   useEffect(() => {
     setFrom(monthStart);
@@ -83,135 +109,35 @@ export default function ExpensesPage() {
 
   const tx = useMemo(() => {
     if (tab !== "shop") return [];
-    const shop = (shopExpenses?.data ?? []) as Array<{
-      date: string;
-      salaryDescription?: string | null;
-      salaryAmount?: string | number;
-      teaDescription?: string | null;
-      teaAmount?: string | number;
-      shopExpDescription?: string | null;
-      shopExpAmount?: string | number;
-    }>;
-    const dmg = (damages?.data ?? []) as Array<{
-      date: string;
-      accessoriesDescription?: string | null;
-      accessoriesAmount?: string | number;
-      repairingDescription?: string | null;
-      repairingAmount?: string | number;
-    }>;
-
-    const wdraw = (withdrawals?.data ?? []) as Array<{
-      date: string;
-      description?: string | null;
-      cash: string;
-      bank: string;
-      total: string;
-    }>;
-
-    const rows: Array<{
-      at: string;
-      category: "SHOP_EXPENSE" | "DAMAGE" | "WITHDRAWAL";
-      type: string;
-      description: string;
-      amount: number;
-      paymentMethod: string;
-    }> = [];
-
-    for (const d of shop) {
-      const date = d.date;
-      const salary = Number(d.salaryAmount ?? 0);
-      if (salary > 0 || (d.salaryDescription ?? "").trim()) {
-        rows.push({
-          at: `${date} 10:30 AM`,
-          category: "SHOP_EXPENSE",
-          type: getExpenseCategoryLabel("SALARY"),
-          description: d.salaryDescription?.trim() || getExpenseCategoryLabel("SALARY"),
-          amount: salary,
-          paymentMethod: "Cash",
-        });
-      }
-      const tea = Number(d.teaAmount ?? 0);
-      if (tea > 0 || (d.teaDescription ?? "").trim()) {
-        rows.push({
-          at: `${date} 09:45 AM`,
-          category: "SHOP_EXPENSE",
-          type: getExpenseCategoryLabel("TEA"),
-          description: d.teaDescription?.trim() || getExpenseCategoryLabel("TEA"),
-          amount: tea,
-          paymentMethod: "Cash",
-        });
-      }
-      const shopExp = Number(d.shopExpAmount ?? 0);
-      if (shopExp > 0 || (d.shopExpDescription ?? "").trim()) {
-        rows.push({
-          at: `${date} 08:20 AM`,
-          category: "SHOP_EXPENSE",
-          type: getExpenseCategoryLabel("SHOP"),
-          description: d.shopExpDescription?.trim() || getExpenseCategoryLabel("SHOP"),
-          amount: shopExp,
-          paymentMethod: "Cash",
-        });
-      }
-    }
-
-    for (const d of dmg) {
-      const date = d.date;
-      const acc = Number(d.accessoriesAmount ?? 0);
-      if (acc > 0 || (d.accessoriesDescription ?? "").trim()) {
-        rows.push({
-          at: `${date} 11:15 AM`,
-          category: "DAMAGE",
-          type: getExpenseCategoryLabel("ACCESSORIES_DAMAGE"),
-          description: d.accessoriesDescription?.trim() || getExpenseCategoryLabel("ACCESSORIES_DAMAGE"),
-          amount: acc,
-          paymentMethod: "—",
-        });
-      }
-      const rep = Number(d.repairingAmount ?? 0);
-      if (rep > 0 || (d.repairingDescription ?? "").trim()) {
-        rows.push({
-          at: `${date} 12:05 PM`,
-          category: "DAMAGE",
-          type: getExpenseCategoryLabel("REPAIRING_DAMAGE"),
-          description: d.repairingDescription?.trim() || getExpenseCategoryLabel("REPAIRING_DAMAGE"),
-          amount: rep,
-          paymentMethod: "—",
-        });
-      }
-    }
-
-    for (const w of wdraw) {
-      const amount = Number(w.total ?? 0);
-      if (amount > 0) {
-        rows.push({
-          at: `${w.date} 06:00 PM`,
-          category: "WITHDRAWAL",
-          type: "Withdraw",
-          description: w.description?.trim() || "Withdrawal from profit",
-          amount,
-          paymentMethod: Number(w.bank ?? 0) > 0 ? "Bank" : "Cash",
-        });
-      }
-    }
-
-    rows.sort((a, b) => (a.at < b.at ? 1 : -1));
-    return rows;
+    return buildExpenseLineItems(
+      (shopExpenses?.data ?? []) as Array<Record<string, unknown>>,
+      (damages?.data ?? []) as Array<Record<string, unknown>>,
+      (withdrawals?.data ?? []) as Array<Record<string, unknown>>,
+    );
   }, [tab, shopExpenses?.data, damages?.data, withdrawals?.data]);
 
   const filteredTx = useMemo(() => {
     if (category === "ALL") return tx;
-    return tx.filter((t) => t.category === category);
+    return tx.filter((t) => t.lineCategory === category);
   }, [tx, category]);
 
   const totals = useMemo(() => {
     const totalExpenses = filteredTx
-      .filter((t) => t.category === "SHOP_EXPENSE")
+      .filter((t) => t.lineCategory === "SHOP_EXPENSE")
       .reduce((a, t) => a + (t.amount || 0), 0);
     const totalDamage = filteredTx
-      .filter((t) => t.category === "DAMAGE")
+      .filter((t) => t.lineCategory === "DAMAGE")
       .reduce((a, t) => a + (t.amount || 0), 0);
     return { totalExpenses, totalDamage, txCount: filteredTx.length };
   }, [filteredTx]);
+
+  function invalidateExpenseQueries() {
+    queryClient.invalidateQueries({ queryKey: ["dashboard", monthId] });
+    queryClient.invalidateQueries({ queryKey: ["shop-expenses", monthId] });
+    queryClient.invalidateQueries({ queryKey: ["damages", monthId] });
+    queryClient.invalidateQueries({ queryKey: ["withdrawals", monthId] });
+    queryClient.invalidateQueries({ queryKey: ["today"] });
+  }
 
   const showLoader =
     dashLoading ||
@@ -237,10 +163,7 @@ export default function ExpensesPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard", monthId] });
-      queryClient.invalidateQueries({ queryKey: ["shop-expenses", monthId] });
-      queryClient.invalidateQueries({ queryKey: ["damages", monthId] });
-      queryClient.invalidateQueries({ queryKey: ["today"] });
+      invalidateExpenseQueries();
       setExpenseOpen(false);
       setExpenseAmount("");
       setExpenseDescription("");
@@ -257,9 +180,7 @@ export default function ExpensesPage() {
       return api.createWithdrawal(monthId, { date: today, amount });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["dashboard", monthId] });
-      queryClient.invalidateQueries({ queryKey: ["withdrawals", monthId] });
-      queryClient.invalidateQueries({ queryKey: ["today"] });
+      invalidateExpenseQueries();
       setWithdrawOpen(false);
       setWithdrawAmount("");
       setWithdrawError("");
@@ -292,6 +213,87 @@ export default function ExpensesPage() {
     setWithdrawAmount("");
     setWithdrawError("");
     setWithdrawOpen(true);
+  }
+
+  const updateLine = useMutation({
+    mutationFn: async ({ row, draft }: { row: ExpenseLineItem; draft: EditDraft }) => {
+      if (!monthId) throw new Error("Month not loaded");
+      const amount = parseMoneyInput(draft.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid amount greater than zero.");
+      }
+
+      if (row.lineCategory === "WITHDRAWAL") {
+        if (!row.withdrawalId) throw new Error("Cannot edit this withdrawal.");
+        if (amount > availableProfit + row.amount) {
+          throw new Error(
+            `Insufficient profit. Available: ${formatMoney(availableProfit + row.amount)}.`,
+          );
+        }
+        return api.updateWithdrawal(monthId, row.withdrawalId, {
+          date: draft.date,
+          amount,
+          description: draft.description.trim() || undefined,
+        });
+      }
+
+      const cat = row.categoryKey as ExpenseCategoryKey;
+      const moved = draft.date !== row.date;
+      if (moved) {
+        await api.deleteExpenseEntry(monthId, { date: row.date, category: cat });
+      }
+      return api.updateExpenseEntry(monthId, {
+        date: draft.date,
+        category: cat,
+        amount,
+        description: draft.description.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries();
+      setEditingRow(null);
+      setEditDraft(null);
+      setOpenMenuId(null);
+      updateLine.reset();
+    },
+  });
+
+  const deleteLine = useMutation({
+    mutationFn: async (row: ExpenseLineItem) => {
+      if (!monthId) throw new Error("Month not loaded");
+      if (row.lineCategory === "WITHDRAWAL") {
+        if (!row.withdrawalId) throw new Error("Cannot delete this withdrawal.");
+        return api.deleteWithdrawal(monthId, row.withdrawalId);
+      }
+      return api.deleteExpenseEntry(monthId, {
+        date: row.date,
+        category: row.categoryKey as ExpenseCategoryKey,
+      });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries();
+      setDeleteTarget(null);
+      setOpenMenuId(null);
+    },
+  });
+
+  function startEdit(row: ExpenseLineItem) {
+    setEditingRow(row);
+    setEditDraft(lineToEditDraft(row));
+    setOpenMenuId(null);
+  }
+
+  function closeEdit() {
+    setEditingRow(null);
+    setEditDraft(null);
+    updateLine.reset();
+  }
+
+  function submitEdit() {
+    if (!editingRow || !editDraft) return;
+    const amount = parseMoneyInput(editDraft.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    updateLine.mutate({ row: editingRow, draft: editDraft });
   }
 
   function submitWithdraw() {
@@ -482,7 +484,7 @@ export default function ExpensesPage() {
                 <div>
                   <div className="stat-label">Total Damage</div>
                   <div className="stat-value">{formatMoney(String(totals.totalDamage))}</div>
-                  <div className="muted">{filteredTx.filter((t) => t.category === "DAMAGE").length} Transactions</div>
+                  <div className="muted">{filteredTx.filter((t) => t.lineCategory === "DAMAGE").length} Transactions</div>
                 </div>
               </div>
               <div className="expenses-metric card green">
@@ -552,32 +554,35 @@ export default function ExpensesPage() {
                         <th>Description</th>
                         <th className="right">Amount (₹)</th>
                         <th>Payment Method</th>
+                        <th className="col-action">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredTx.map((r, idx) => (
-                        <tr key={`${r.at}-${idx}`}>
-                          <td>{r.at}</td>
+                      {filteredTx.map((r) => (
+                        <tr key={r.id}>
+                          <td>{r.date}</td>
                           <td>
                             <span
                               className={`expenses-pill ${
-                                r.category === "DAMAGE"
+                                r.lineCategory === "DAMAGE"
                                   ? "damage"
-                                  : r.category === "WITHDRAWAL"
+                                  : r.lineCategory === "WITHDRAWAL"
                                     ? "withdraw"
                                     : "shop"
                               }`}
                             >
-                              {r.category === "DAMAGE"
+                              {r.lineCategory === "DAMAGE"
                                 ? "Damage"
-                                : r.category === "WITHDRAWAL"
+                                : r.lineCategory === "WITHDRAWAL"
                                   ? "Withdraw"
                                   : "Shop Expense"}
                             </span>
                           </td>
                           <td
                             className={
-                              r.category === "DAMAGE" || r.category === "WITHDRAWAL" ? "negative" : ""
+                              r.lineCategory === "DAMAGE" || r.lineCategory === "WITHDRAWAL"
+                                ? "negative"
+                                : ""
                             }
                           >
                             {r.type}
@@ -585,6 +590,34 @@ export default function ExpensesPage() {
                           <td>{r.description}</td>
                           <td className="right">{formatMoney(String(r.amount))}</td>
                           <td className="muted">{r.paymentMethod}</td>
+                          <td className="col-action">
+                            <RowActionMenu
+                              open={openMenuId === r.id}
+                              disabled={
+                                deleteLine.isPending ||
+                                updateLine.isPending ||
+                                (r.lineCategory === "WITHDRAWAL" && !r.withdrawalId)
+                              }
+                              onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
+                              onClose={() => setOpenMenuId(null)}
+                              items={[
+                                {
+                                  key: "edit",
+                                  label: "Edit",
+                                  onClick: () => startEdit(r),
+                                },
+                                {
+                                  key: "delete",
+                                  label: "Delete",
+                                  danger: true,
+                                  onClick: () => {
+                                    setOpenMenuId(null);
+                                    setDeleteTarget(r);
+                                  },
+                                },
+                              ]}
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -647,6 +680,79 @@ export default function ExpensesPage() {
             </div>
           </div>
         )}
+
+        <FormModal open={!!editingRow && !!editDraft} title="Edit transaction" onClose={closeEdit}>
+          {editDraft && editingRow && (
+            <div className="form-stack" style={{ maxWidth: "100%" }}>
+              <label>
+                Date
+                <input
+                  type="date"
+                  value={editDraft.date}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+                  }
+                />
+              </label>
+              {editingRow.lineCategory !== "WITHDRAWAL" ? (
+                <label>
+                  Category
+                  <input type="text" value={editingRow.type} disabled />
+                </label>
+              ) : null}
+              <label>
+                Amount (₹)
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editDraft.amount}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, amount: e.target.value } : prev))
+                  }
+                />
+              </label>
+              <label>
+                Description (optional)
+                <input
+                  type="text"
+                  value={editDraft.description}
+                  onChange={(e) =>
+                    setEditDraft((prev) =>
+                      prev ? { ...prev, description: e.target.value } : prev,
+                    )
+                  }
+                />
+              </label>
+            </div>
+          )}
+          {updateLine.error && <p className="error">{(updateLine.error as Error).message}</p>}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={closeEdit}>
+              Cancel
+            </button>
+            <button type="button" onClick={submitEdit} disabled={updateLine.isPending}>
+              {updateLine.isPending ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        </FormModal>
+
+        <ConfirmDialog
+          open={!!deleteTarget}
+          title="Delete transaction?"
+          message={
+            deleteTarget
+              ? `Remove this ${deleteTarget.lineCategory === "WITHDRAWAL" ? "withdrawal" : "expense"} permanently? This cannot be undone.`
+              : ""
+          }
+          error={deleteLine.error ? (deleteLine.error as Error).message : null}
+          loading={deleteLine.isPending}
+          onCancel={() => {
+            setDeleteTarget(null);
+            deleteLine.reset();
+          }}
+          onConfirm={() => deleteTarget && deleteLine.mutate(deleteTarget)}
+        />
       </div>
     </MonthGate>
   );

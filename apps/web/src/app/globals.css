@@ -1038,11 +1038,79 @@ table.data-list th {
   line-height: 1.45;
 }
 
+.repair-page table.repair-table th.repair-col-actions,
+.repair-page table.repair-table td.repair-col-actions {
+  width: 13rem;
+  min-width: 13rem;
+  max-width: 13rem;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: middle;
+  padding-right: 0.5rem;
+}
+
+.repair-page table.repair-table th.repair-col-actions {
+  text-align: center;
+}
+
+.repair-actions-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  gap: 0.35rem;
+}
+
+.repair-actions-btns {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.repair-workflow-btns {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.repair-actions-menu {
+  flex: 0 0 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.repair-actions-cell .repair-action-btn,
+.repair-actions-cell .row-action-menu .icon-btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.repair-action-btn {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  border-radius: 8px;
+  min-height: auto;
+}
+
+.repair-actions-cell .row-action-menu {
+  flex: 0 0 auto;
+}
+
 .repair-row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
+  justify-content: center;
 }
 
 .sales-items-pill {
@@ -3282,6 +3350,16 @@ table.data-list th {
   text-align: right;
 }
 
+.expenses-table .col-action {
+  width: 4.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.expenses-table th.col-action {
+  text-align: center;
+}
+
 .expenses-pill {
   font-size: 0.74rem;
   font-weight: 700;
@@ -3875,7 +3953,7 @@ table.data-list th {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 1400;
   padding: 1rem;
 }
 

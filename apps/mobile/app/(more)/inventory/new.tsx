@@ -21,8 +21,8 @@ import { colors, radii, spacing } from "@/theme/tokens";
 type AddProductMode = "cover" | "other_accessory" | "device" | "repair";
 type DeviceKind = Extract<ProductKind, "MOBILE" | "SPEAKERS_SOUND" | "CHARGER_CABLE">;
 
-const MODES: Array<{ id: AddProductMode; label: string }> = [
-  { id: "cover", label: "Mobile Cover" },
+const MODES: Array<{ id: AddProductMode; label: string; hint?: string }> = [
+  { id: "cover", label: "Mobile Cover", hint: "Model → cover category → design" },
   { id: "other_accessory", label: "Other Accessory" },
   { id: "device", label: "Mobile / Audio / Cable" },
   { id: "repair", label: "Repair Part" },
@@ -147,7 +147,7 @@ export default function NewProductScreen() {
     setFormError("");
     if (mode === "cover") {
       if (!phoneModelId) return setFormError("Select a phone model.");
-      if (!coverTypeId) return setFormError("Select a cover type.");
+      if (!coverTypeId) return setFormError("Select a cover category.");
       if (!variantName.trim()) return setFormError("Design name is required.");
     }
     if ((mode === "other_accessory" || mode === "device") && !name.trim()) {
@@ -174,6 +174,9 @@ export default function NewProductScreen() {
               onPress={() => setMode(m.id)}
             >
               <Text style={[styles.tabText, mode === m.id && styles.tabTextActive]}>{m.label}</Text>
+              {m.hint && mode === m.id ? (
+                <Text style={styles.tabHint}>{m.hint}</Text>
+              ) : null}
             </Pressable>
           ))}
         </ScrollView>
@@ -203,17 +206,17 @@ export default function NewProductScreen() {
               />
             </View>
 
-            <FieldLabel>Cover type</FieldLabel>
+            <FieldLabel>Cover category</FieldLabel>
             <View style={styles.pickerWrap}>
               <Picker selectedValue={coverTypeId} onValueChange={setCoverTypeId}>
-                <Picker.Item label="Select type…" value="" />
+                <Picker.Item label="Select cover category…" value="" />
                 {(coverTypes?.data ?? []).map((t) => (
                   <Picker.Item key={t.id} label={t.name} value={t.id} />
                 ))}
               </Picker>
             </View>
             <View style={styles.inlineAdd}>
-              <TextField value={newCoverType} onChangeText={setNewCoverType} placeholder="New cover type" />
+              <TextField value={newCoverType} onChangeText={setNewCoverType} placeholder="New cover category" />
               <SecondaryButton
                 label="Add"
                 onPress={() => phoneModelId && newCoverType.trim() && addCoverType.mutate()}
@@ -222,6 +225,9 @@ export default function NewProductScreen() {
 
             <FieldLabel>Design name</FieldLabel>
             <TextField value={variantName} onChangeText={setVariantName} placeholder="e.g. Blue Marble" />
+            <Text style={styles.hint}>
+              Name auto: Model – Cover category – Design (e.g. Samsung J7 – Silicon – Blue Marble)
+            </Text>
           </>
         ) : null}
 
@@ -323,6 +329,8 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: colors.accentLight, borderColor: colors.accent },
   tabText: { color: colors.muted, fontWeight: "600", fontSize: 12 },
   tabTextActive: { color: colors.accent },
+  tabHint: { fontSize: 10, color: colors.muted, marginTop: 2 },
+  hint: { fontSize: 12, color: colors.muted, marginBottom: spacing.md, lineHeight: 18 },
   pickerWrap: {
     borderWidth: 1,
     borderColor: colors.border,

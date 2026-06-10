@@ -22,7 +22,8 @@
     "db:push": "npm run db:push --workspace=@sk-mobile/api",
     "build:deploy": "npm run build --workspace=@sk-mobile/shared && npm run build --workspace=@sk-mobile/api && npm run build --workspace=@sk-mobile/web",
     "build:firebase": "node scripts/build-firebase.mjs",
-    "build:apk": "node scripts/build-android-apk.mjs"
+    "build:apk": "node scripts/build-android-apk.mjs",
+    "build:apk:local": "node scripts/build-android-apk-local.mjs"
   },
   "engines": {
     "node": ">=20"

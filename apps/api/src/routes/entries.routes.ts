@@ -89,11 +89,15 @@ function buildRechargeEntryData(body: RechargeBatchInput) {
     { entryType: "MNP", amount: body.mnp },
   ];
 
-  if (body.rechargeAmount <= 0) {
-    throw new Error("Enter the actual recharge amount");
+  const totalIncome = d(body.saleProfit)
+    .plus(d(body.chillar))
+    .plus(d(body.act))
+    .plus(d(body.mnp));
+  if (body.rechargeAmount <= 0 && totalIncome.lte(0)) {
+    throw new Error("Enter recharge amount or at least one income amount");
   }
 
-  const faceValue = fmt(d(body.rechargeAmount));
+  const faceValue = body.rechargeAmount > 0 ? fmt(d(body.rechargeAmount)) : null;
   const saleProfit = fmt(d(body.saleProfit));
   const chillar = fmt(d(body.chillar));
   const act = fmt(d(body.act));
@@ -288,6 +292,48 @@ entriesRouter.post("/transfer-entries", async (req, res, next) => {
   }
 });
 
+entriesRouter.patch("/transfer-entries/:entryId", async (req, res, next) => {
+  try {
+    await guard(req, req.user!.userId);
+    const mid = monthIdFromParams(req.params);
+    const body = transferEntrySchema.parse(req.body);
+    const existing = await prisma.transferEntry.findFirst({
+      where: { id: req.params.entryId, businessMonthId: mid },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const date = parseDate(body.date);
+    const entry = await prisma.transferEntry.update({
+      where: { id: existing.id },
+      data: {
+        date,
+        serviceKey: body.serviceKey,
+        amount: fmt(d(body.amount)),
+        note: body.note,
+      },
+    });
+
+    const dates = new Set([existing.date.toISOString(), date.toISOString()]);
+    for (const iso of dates) {
+      await rollupTransferDay(mid, new Date(iso));
+    }
+
+    res.json({
+      id: entry.id,
+      date: body.date,
+      serviceKey: entry.serviceKey,
+      amount: fmt(d(entry.amount)),
+      note: entry.note,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Update failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
 entriesRouter.delete("/transfer-entries/:entryId", async (req, res, next) => {
   try {
     await guard(req, req.user!.userId);
@@ -422,12 +468,15 @@ entriesRouter.patch("/repair-jobs/:jobId", async (req, res, next) => {
       res.status(404).json({ error: "Repair job not found" });
       return;
     }
-    if (body.status === "REPAIRED_PENDING_PICKUP") {
+    const completingRepair =
+      body.status === "REPAIRED_PENDING_PICKUP" &&
+      existing.status !== "REPAIRED_PENDING_PICKUP";
+    if (completingRepair) {
       validateRepairPartSelection(body);
     }
     const job = await prisma.$transaction(async (tx) => {
       let statusInput: typeof body = { ...body };
-      if (body.status === "REPAIRED_PENDING_PICKUP") {
+      if (completingRepair) {
         const costs = await resolveRepairCompleteCostsInTx(
           tx,
           body,

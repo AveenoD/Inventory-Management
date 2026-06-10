@@ -40,3 +40,9 @@ export const createWithdrawalSchema = z.object({
   amount: z.coerce.number().positive(),
   description: z.string().optional(),
 });
+
+export const updateWithdrawalSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  amount: z.coerce.number().positive().optional(),
+  description: z.string().optional(),
+});

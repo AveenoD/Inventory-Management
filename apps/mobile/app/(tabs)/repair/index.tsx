@@ -8,7 +8,7 @@ import {
   type RepairJobStatus,
 } from "@sk-mobile/shared";
 import { Picker } from "@react-native-picker/picker";
-import { Clock, IndianRupee, Search, Trash2, Wrench } from "lucide-react-native";
+import { Clock, IndianRupee, Search, Wrench } from "lucide-react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
@@ -18,6 +18,7 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal, ModalActions } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu, type RowActionMenuItem } from "@/components/ui/row-action-menu";
 import { GradientStatCard } from "@/components/ui/gradient-stat-card";
 import { MetricsGrid, MetricCell } from "@/components/ui/metrics-grid";
 import { PrimaryButton } from "@/components/ui/primary-button";
@@ -54,6 +55,36 @@ function moneyFieldValue(amount: string | undefined) {
   return n > 0 ? String(n) : "";
 }
 
+type EditDraft = {
+  date: string;
+  customerName: string;
+  customerPhone: string;
+  device: string;
+  issueDescription: string;
+  repairCost: string;
+  customerCharge: string;
+};
+
+function jobToEditDraft(job: RepairJobDto): EditDraft {
+  return {
+    date: job.date,
+    customerName: job.customerName ?? "",
+    customerPhone: job.customerPhone ?? "",
+    device: job.device ?? "",
+    issueDescription: job.issueDescription ?? "",
+    repairCost: moneyFieldValue(job.repairCost),
+    customerCharge: moneyFieldValue(job.customerCharge || job.salePrice),
+  };
+}
+
+function canEditPricing(status: RepairJobStatus) {
+  return (
+    status === "RECEIVED" ||
+    status === "IN_PROGRESS" ||
+    status === "REPAIRED_PENDING_PICKUP"
+  );
+}
+
 export default function RepairScreen() {
   const { monthId } = useMonthContext();
   const qc = useQueryClient();
@@ -68,6 +99,8 @@ export default function RepairScreen() {
   const [actionJob, setActionJob] = useState<RepairJobDto | null>(null);
   const [actionKind, setActionKind] = useState<"complete" | "deliver" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RepairJobDto | null>(null);
+  const [editingJob, setEditingJob] = useState<RepairJobDto | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   const [date, setDate] = useState(today);
   const [customerName, setCustomerName] = useState("");
@@ -181,6 +214,28 @@ export default function RepairScreen() {
     },
   });
 
+  const editJob = useMutation({
+    mutationFn: (payload: { job: RepairJobDto; draft: EditDraft }) =>
+      api.updateRepairJob(monthId!, payload.job.id, {
+        status: payload.job.status as RepairJobStatus,
+        date: payload.draft.date,
+        customerName: payload.draft.customerName.trim(),
+        customerPhone: payload.draft.customerPhone.trim() || undefined,
+        device: payload.draft.device.trim(),
+        issueDescription: payload.draft.issueDescription.trim(),
+        ...(canEditPricing(payload.job.status as RepairJobStatus) && {
+          repairCost: parseMoneyInput(payload.draft.repairCost),
+          customerCharge: parseMoneyInput(payload.draft.customerCharge),
+        }),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setEditingJob(null);
+      setEditDraft(null);
+      editJob.reset();
+    },
+  });
+
   const updateStatus = useMutation({
     mutationFn: (payload: {
       jobId: string;
@@ -239,6 +294,69 @@ export default function RepairScreen() {
     setActionJob(job);
     setActionKind("deliver");
     setDeliveredAt(today);
+  }
+
+  function startEdit(job: RepairJobDto) {
+    setEditingJob(job);
+    setEditDraft(jobToEditDraft(job));
+  }
+
+  function closeEdit() {
+    setEditingJob(null);
+    setEditDraft(null);
+    editJob.reset();
+  }
+
+  function buildRepairMenuItems(job: RepairJobDto): RowActionMenuItem[] {
+    const items: RowActionMenuItem[] = [];
+
+    if (job.status === "RECEIVED") {
+      items.push(
+        {
+          key: "start",
+          label: "Start repair",
+          onPress: () => updateStatus.mutate({ jobId: job.id, status: "IN_PROGRESS" }),
+        },
+        {
+          key: "unrepairable",
+          label: "Unrepairable",
+          onPress: () =>
+            updateStatus.mutate({ jobId: job.id, status: "UNREPAIRABLE_RETURNED" }),
+        },
+      );
+    } else if (job.status === "IN_PROGRESS") {
+      items.push(
+        {
+          key: "done",
+          label: "Repair done",
+          onPress: () => openComplete(job),
+        },
+        {
+          key: "unrepairable",
+          label: "Unrepairable",
+          onPress: () =>
+            updateStatus.mutate({ jobId: job.id, status: "UNREPAIRABLE_RETURNED" }),
+        },
+      );
+    } else if (job.status === "REPAIRED_PENDING_PICKUP") {
+      items.push({
+        key: "pickup",
+        label: "Customer picked up",
+        onPress: () => openDeliver(job),
+      });
+    }
+
+    items.push(
+      { key: "edit", label: "Edit", onPress: () => startEdit(job) },
+      {
+        key: "delete",
+        label: "Delete",
+        danger: true,
+        onPress: () => setDeleteTarget(job),
+      },
+    );
+
+    return items;
   }
 
   const content = (
@@ -328,10 +446,16 @@ export default function RepairScreen() {
           renderItem={({ item: r }) => (
             <View style={styles.jobCard}>
               <View style={styles.jobTop}>
-                <Text style={styles.jobDevice}>{r.device ?? "—"}</Text>
-                <Badge
-                  label={REPAIR_STATUS_LABELS[r.status as RepairJobStatus] ?? r.status}
-                  tone={statusTone(r.status)}
+                <View style={styles.jobTopMain}>
+                  <Text style={styles.jobDevice}>{r.device ?? "—"}</Text>
+                  <Badge
+                    label={REPAIR_STATUS_LABELS[r.status as RepairJobStatus] ?? r.status}
+                    tone={statusTone(r.status)}
+                  />
+                </View>
+                <RowActionMenu
+                  items={buildRepairMenuItems(r)}
+                  disabled={removeJob.isPending || editJob.isPending || updateStatus.isPending}
                 />
               </View>
               <Text style={styles.jobCustomer}>{r.customerName ?? "—"}</Text>
@@ -346,49 +470,6 @@ export default function RepairScreen() {
                     ? "On pickup"
                     : "—"}
               </Text>
-              <View style={styles.jobActions}>
-                {r.status === "RECEIVED" ? (
-                  <>
-                    <Pressable
-                      style={styles.actionBtn}
-                      onPress={() => updateStatus.mutate({ jobId: r.id, status: "IN_PROGRESS" })}
-                    >
-                      <Text style={styles.actionBtnText}>Start</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.secondaryBtn}
-                      onPress={() =>
-                        updateStatus.mutate({ jobId: r.id, status: "UNREPAIRABLE_RETURNED" })
-                      }
-                    >
-                      <Text style={styles.secondaryBtnText}>Unrepairable</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-                {r.status === "IN_PROGRESS" ? (
-                  <>
-                    <Pressable style={styles.actionBtn} onPress={() => openComplete(r)}>
-                      <Text style={styles.actionBtnText}>Repair done</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.secondaryBtn}
-                      onPress={() =>
-                        updateStatus.mutate({ jobId: r.id, status: "UNREPAIRABLE_RETURNED" })
-                      }
-                    >
-                      <Text style={styles.secondaryBtnText}>Unrepairable</Text>
-                    </Pressable>
-                  </>
-                ) : null}
-                {r.status === "REPAIRED_PENDING_PICKUP" ? (
-                  <Pressable style={styles.actionBtn} onPress={() => openDeliver(r)}>
-                    <Text style={styles.actionBtnText}>Picked up</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable onPress={() => setDeleteTarget(r)}>
-                  <Trash2 size={18} color={colors.red} />
-                </Pressable>
-              </View>
             </View>
           )}
         />
@@ -522,6 +603,81 @@ export default function RepairScreen() {
         ) : null}
       </FormModal>
 
+      <FormModal
+        visible={!!editingJob && !!editDraft}
+        title="Edit repair job"
+        subtitle="Update details without changing status"
+        onClose={closeEdit}
+      >
+        {editingJob && editDraft ? (
+          <>
+            <DateField
+              value={editDraft.date}
+              onChange={(v) => setEditDraft((prev) => (prev ? { ...prev, date: v } : prev))}
+              label="Date received"
+            />
+            <FieldLabel>Customer name</FieldLabel>
+            <TextField
+              value={editDraft.customerName}
+              onChangeText={(v) =>
+                setEditDraft((prev) => (prev ? { ...prev, customerName: v } : prev))
+              }
+            />
+            <FieldLabel optional>Phone</FieldLabel>
+            <TextField
+              value={editDraft.customerPhone}
+              onChangeText={(v) =>
+                setEditDraft((prev) => (prev ? { ...prev, customerPhone: v } : prev))
+              }
+              keyboardType="phone-pad"
+            />
+            <FieldLabel>Device / model</FieldLabel>
+            <TextField
+              value={editDraft.device}
+              onChangeText={(v) => setEditDraft((prev) => (prev ? { ...prev, device: v } : prev))}
+            />
+            <FieldLabel>Issue</FieldLabel>
+            <TextField
+              value={editDraft.issueDescription}
+              onChangeText={(v) =>
+                setEditDraft((prev) => (prev ? { ...prev, issueDescription: v } : prev))
+              }
+              multiline
+            />
+            {canEditPricing(editingJob.status as RepairJobStatus) ? (
+              <>
+                <FieldLabel optional>Repair cost</FieldLabel>
+                <TextField
+                  value={editDraft.repairCost}
+                  onChangeText={(v) =>
+                    setEditDraft((prev) => (prev ? { ...prev, repairCost: v } : prev))
+                  }
+                  keyboardType="numeric"
+                />
+                <FieldLabel optional>Customer charge</FieldLabel>
+                <TextField
+                  value={editDraft.customerCharge}
+                  onChangeText={(v) =>
+                    setEditDraft((prev) => (prev ? { ...prev, customerCharge: v } : prev))
+                  }
+                  keyboardType="numeric"
+                />
+              </>
+            ) : (
+              <Text style={styles.hint}>Pricing cannot be changed for delivered or unrepairable jobs.</Text>
+            )}
+            {editJob.error ? <Text style={styles.error}>{(editJob.error as Error).message}</Text> : null}
+            <ModalActions
+              onCancel={closeEdit}
+              onConfirm={() => editJob.mutate({ job: editingJob, draft: editDraft })}
+              confirmLabel="Save changes"
+              loading={editJob.isPending}
+              disabled={!editDraft.customerName.trim() || !editDraft.device.trim()}
+            />
+          </>
+        ) : null}
+      </FormModal>
+
       <ConfirmDialog
         visible={!!deleteTarget}
         title="Delete repair job?"
@@ -595,37 +751,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  jobTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  jobDevice: { fontWeight: "700", fontSize: 16, color: colors.text, flex: 1 },
+  jobTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  jobTopMain: { flex: 1, minWidth: 0, gap: spacing.xs },
+  jobDevice: { fontWeight: "700", fontSize: 16, color: colors.text },
   jobCustomer: { marginTop: 4, color: colors.text, fontWeight: "600" },
   jobIssue: { marginTop: 4, color: colors.muted, fontSize: 14 },
   jobMeta: { marginTop: spacing.sm, fontSize: 13, color: colors.muted },
-  jobActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-    flexWrap: "wrap",
-  },
-  actionBtn: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.input,
-    minHeight: 40,
-    justifyContent: "center",
-  },
-  actionBtnText: { color: "#fff", fontWeight: "600", fontSize: 14 },
-  secondaryBtn: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    borderRadius: radii.input,
-    minHeight: 40,
-    justifyContent: "center",
-  },
-  secondaryBtnText: { color: colors.text, fontWeight: "600", fontSize: 14 },
   pickerWrap: {
     borderWidth: 1,
     borderColor: colors.border,

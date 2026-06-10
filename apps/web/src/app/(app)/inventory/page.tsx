@@ -368,9 +368,9 @@ export default function InventoryPage() {
               className="inventory-cover-select"
               value={coverTypeName}
               onChange={(e) => setCoverTypeName(e.target.value)}
-              aria-label="Filter by cover type"
+              aria-label="Filter by cover category"
             >
-              <option value="">All cover types</option>
+              <option value="">All cover categories</option>
               {coverTypeOptions.map((t) => (
                 <option key={t.name} value={t.name}>
                   {t.name} ({t.count})
@@ -414,7 +414,7 @@ export default function InventoryPage() {
           }
           description={
             filter === "COVERS"
-              ? "Add a cover: pick phone model, cover type, then design."
+              ? "Add a cover: pick phone model, cover category, then design."
               : "Add items with the correct product type."
           }
           action={

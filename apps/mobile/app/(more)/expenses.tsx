@@ -5,8 +5,9 @@ import { Picker } from "@react-native-picker/picker";
 import { Plus } from "lucide-react-native";
 import {
   EXPENSE_CATEGORIES,
-  getExpenseCategoryLabel,
+  buildExpenseLineItems,
   type ExpenseCategoryKey,
+  type ExpenseLineItem,
 } from "@sk-mobile/shared";
 import { api } from "@/lib/api";
 import { useMonthContext } from "@/contexts/month-context";
@@ -15,20 +16,30 @@ import { ScreenShell } from "@/components/screen-shell";
 import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal, ModalActions } from "@/components/ui/form-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
 import { GradientStatCard } from "@/components/ui/gradient-stat-card";
 import { DateField, TextField, FieldLabel } from "@/components/ui/form-fields";
 import { formatMoney, parseMoneyInput, todayIso } from "@/lib/format";
 import { useQueryRefresh } from "@/lib/use-query-refresh";
 import { colors, radii, spacing } from "@/theme/tokens";
 
-type ExpenseRow = {
-  id: string;
+type EditDraft = {
   date: string;
-  label: string;
+  amount: string;
   description: string;
-  amount: number;
-  kind: "EXPENSE" | "WITHDRAWAL";
 };
+
+function lineToEditDraft(row: ExpenseLineItem): EditDraft {
+  const label = row.type;
+  const desc =
+    row.description && row.description !== label ? row.description : "";
+  return {
+    date: row.date,
+    amount: String(row.amount),
+    description: desc,
+  };
+}
 
 export default function ExpensesScreen() {
   const { year, month, monthId } = useMonthContext();
@@ -47,6 +58,9 @@ export default function ExpensesScreen() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [editingRow, setEditingRow] = useState<ExpenseLineItem | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExpenseLineItem | null>(null);
 
   const { data: dashboard, isLoading: dashLoading, refetch: refetchDash, isFetching: dashFetching } = useQuery({
     queryKey: ["dashboard", monthId],
@@ -66,6 +80,17 @@ export default function ExpensesScreen() {
   });
 
   const {
+    data: damages,
+    isLoading: damageLoading,
+    refetch: refetchDamages,
+    isFetching: damageFetching,
+  } = useQuery({
+    queryKey: ["damages", monthId, from, to],
+    queryFn: () => api.getDamages(monthId!, 1, 31, from, to),
+    enabled: !!monthId,
+  });
+
+  const {
     data: withdrawals,
     isLoading: wLoading,
     refetch: refetchWithdrawals,
@@ -77,52 +102,32 @@ export default function ExpensesScreen() {
   });
 
   const refreshExpenses = useCallback(
-    () => Promise.all([refetchDash(), refetchShop(), refetchWithdrawals()]),
-    [refetchDash, refetchShop, refetchWithdrawals],
+    () => Promise.all([refetchDash(), refetchShop(), refetchDamages(), refetchWithdrawals()]),
+    [refetchDash, refetchShop, refetchDamages, refetchWithdrawals],
   );
   const { refreshing, onRefresh } = useQueryRefresh(
     refreshExpenses,
-    dashFetching || shopFetching || wFetching,
+    dashFetching || shopFetching || damageFetching || wFetching,
   );
 
-  const rows = useMemo(() => {
-    const list: ExpenseRow[] = [];
-    for (const d of (shopExpenses?.data ?? []) as Array<Record<string, unknown>>) {
-      const date = String(d.date ?? "");
-      const pairs: Array<[string, string, string]> = [
-        ["salaryAmount", "salaryDescription", "SALARY"],
-        ["teaAmount", "teaDescription", "TEA"],
-        ["shopExpAmount", "shopExpDescription", "SHOP"],
-      ];
-      for (const [amtKey, descKey, cat] of pairs) {
-        const amount = Number(d[amtKey] ?? 0);
-        if (amount > 0) {
-          list.push({
-            id: `${date}-${cat}`,
-            date,
-            label: getExpenseCategoryLabel(cat),
-            description: String(d[descKey] ?? cat),
-            amount,
-            kind: "EXPENSE",
-          });
-        }
-      }
-    }
-    for (const w of (withdrawals?.data ?? []) as Array<Record<string, unknown>>) {
-      const amount = Number(w.total ?? w.cash ?? 0);
-      if (amount > 0) {
-        list.push({
-          id: `w-${String(w.date)}-${amount}`,
-          date: String(w.date),
-          label: "Withdrawal",
-          description: String(w.description ?? "Profit withdrawal"),
-          amount,
-          kind: "WITHDRAWAL",
-        });
-      }
-    }
-    return list.sort((a, b) => b.date.localeCompare(a.date));
-  }, [shopExpenses, withdrawals]);
+  const rows = useMemo(
+    () =>
+      buildExpenseLineItems(
+        (shopExpenses?.data ?? []) as Array<Record<string, unknown>>,
+        (damages?.data ?? []) as Array<Record<string, unknown>>,
+        (withdrawals?.data ?? []) as Array<Record<string, unknown>>,
+      ),
+    [shopExpenses, damages, withdrawals],
+  );
+
+  const availableProfit = Number(dashboard?.netProfit ?? 0) || 0;
+
+  function invalidateExpenseQueries() {
+    qc.invalidateQueries({ queryKey: ["shop-expenses", monthId] });
+    qc.invalidateQueries({ queryKey: ["damages", monthId] });
+    qc.invalidateQueries({ queryKey: ["withdrawals", monthId] });
+    qc.invalidateQueries({ queryKey: ["dashboard", monthId] });
+  }
 
   const createExpense = useMutation({
     mutationFn: () =>
@@ -133,8 +138,7 @@ export default function ExpensesScreen() {
         description: expenseDescription || undefined,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["shop-expenses", monthId] });
-      qc.invalidateQueries({ queryKey: ["dashboard", monthId] });
+      invalidateExpenseQueries();
       setExpenseOpen(false);
       setExpenseAmount("");
       setExpenseDescription("");
@@ -148,14 +152,75 @@ export default function ExpensesScreen() {
         amount: parseMoneyInput(withdrawAmount),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["withdrawals", monthId] });
-      qc.invalidateQueries({ queryKey: ["dashboard", monthId] });
+      invalidateExpenseQueries();
       setWithdrawOpen(false);
       setWithdrawAmount("");
     },
   });
 
-  const isLoading = dashLoading || shopLoading || wLoading;
+  const updateLine = useMutation({
+    mutationFn: async ({ row, draft }: { row: ExpenseLineItem; draft: EditDraft }) => {
+      const amount = parseMoneyInput(draft.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        throw new Error("Enter a valid amount greater than zero.");
+      }
+
+      if (row.lineCategory === "WITHDRAWAL") {
+        if (!row.withdrawalId) throw new Error("Cannot edit this withdrawal.");
+        if (amount > availableProfit + row.amount) {
+          throw new Error(
+            `Insufficient profit. Available: ${formatMoney(availableProfit + row.amount)}.`,
+          );
+        }
+        return api.updateWithdrawal(monthId!, row.withdrawalId, {
+          date: draft.date,
+          amount,
+          description: draft.description.trim() || undefined,
+        });
+      }
+
+      const cat = row.categoryKey as ExpenseCategoryKey;
+      if (draft.date !== row.date) {
+        await api.deleteExpenseEntry(monthId!, { date: row.date, category: cat });
+      }
+      return api.updateExpenseEntry(monthId!, {
+        date: draft.date,
+        category: cat,
+        amount,
+        description: draft.description.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries();
+      setEditingRow(null);
+      setEditDraft(null);
+      updateLine.reset();
+    },
+  });
+
+  const deleteLine = useMutation({
+    mutationFn: async (row: ExpenseLineItem) => {
+      if (row.lineCategory === "WITHDRAWAL") {
+        if (!row.withdrawalId) throw new Error("Cannot delete this withdrawal.");
+        return api.deleteWithdrawal(monthId!, row.withdrawalId);
+      }
+      return api.deleteExpenseEntry(monthId!, {
+        date: row.date,
+        category: row.categoryKey as ExpenseCategoryKey,
+      });
+    },
+    onSuccess: () => {
+      invalidateExpenseQueries();
+      setDeleteTarget(null);
+    },
+  });
+
+  function startEdit(row: ExpenseLineItem) {
+    setEditingRow(row);
+    setEditDraft(lineToEditDraft(row));
+  }
+
+  const isLoading = dashLoading || shopLoading || damageLoading || wLoading;
 
   return (
     <MonthGate>
@@ -212,8 +277,30 @@ export default function ExpensesScreen() {
             renderItem={({ item: r }) => (
               <View style={styles.rowCard}>
                 <View style={styles.rowTop}>
-                  <Text style={styles.rowLabel}>{r.label}</Text>
-                  <Text style={styles.rowAmount}>{formatMoney(String(r.amount))}</Text>
+                  <View style={styles.rowTopMain}>
+                    <Text style={styles.rowLabel}>{r.type}</Text>
+                    <Text style={styles.rowAmount}>{formatMoney(String(r.amount))}</Text>
+                  </View>
+                  <RowActionMenu
+                    disabled={
+                      deleteLine.isPending ||
+                      updateLine.isPending ||
+                      (r.lineCategory === "WITHDRAWAL" && !r.withdrawalId)
+                    }
+                    items={[
+                      {
+                        key: "edit",
+                        label: "Edit",
+                        onPress: () => startEdit(r),
+                      },
+                      {
+                        key: "delete",
+                        label: "Delete",
+                        danger: true,
+                        onPress: () => setDeleteTarget(r),
+                      },
+                    ]}
+                  />
                 </View>
                 <Text style={styles.rowDesc}>{r.description}</Text>
                 <Text style={styles.rowDate}>{r.date}</Text>
@@ -264,6 +351,75 @@ export default function ExpensesScreen() {
             disabled={!withdrawAmount}
           />
         </FormModal>
+
+        <FormModal
+          visible={!!editingRow && !!editDraft}
+          title="Edit transaction"
+          onClose={() => {
+            setEditingRow(null);
+            setEditDraft(null);
+            updateLine.reset();
+          }}
+        >
+          {editDraft && editingRow ? (
+            <>
+              <DateField
+                value={editDraft.date}
+                onChange={(v) => setEditDraft((prev) => (prev ? { ...prev, date: v } : prev))}
+                label="Date"
+              />
+              {editingRow.lineCategory !== "WITHDRAWAL" ? (
+                <>
+                  <FieldLabel>Category</FieldLabel>
+                  <Text style={styles.readonlyCat}>{editingRow.type}</Text>
+                </>
+              ) : null}
+              <FieldLabel>Amount</FieldLabel>
+              <TextField
+                value={editDraft.amount}
+                onChangeText={(v) => setEditDraft((prev) => (prev ? { ...prev, amount: v } : prev))}
+                keyboardType="numeric"
+              />
+              <FieldLabel optional>Description</FieldLabel>
+              <TextField
+                value={editDraft.description}
+                onChangeText={(v) =>
+                  setEditDraft((prev) => (prev ? { ...prev, description: v } : prev))
+                }
+              />
+            </>
+          ) : null}
+          {updateLine.error ? (
+            <Text style={styles.error}>{(updateLine.error as Error).message}</Text>
+          ) : null}
+          <ModalActions
+            onCancel={() => {
+              setEditingRow(null);
+              setEditDraft(null);
+              updateLine.reset();
+            }}
+            onConfirm={() => editingRow && editDraft && updateLine.mutate({ row: editingRow, draft: editDraft })}
+            loading={updateLine.isPending}
+            disabled={!editDraft?.amount}
+            confirmLabel="Save changes"
+          />
+        </FormModal>
+
+        <ConfirmDialog
+          visible={!!deleteTarget}
+          title="Delete transaction?"
+          message={
+            deleteTarget
+              ? `Remove this ${deleteTarget.lineCategory === "WITHDRAWAL" ? "withdrawal" : "expense"} permanently?`
+              : ""
+          }
+          onCancel={() => {
+            setDeleteTarget(null);
+            deleteLine.reset();
+          }}
+          onConfirm={() => deleteTarget && deleteLine.mutate(deleteTarget)}
+          loading={deleteLine.isPending}
+        />
       </ScreenShell>
     </MonthGate>
   );
@@ -318,10 +474,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  rowTop: { flexDirection: "row", justifyContent: "space-between" },
-  rowLabel: { fontWeight: "700", color: colors.text },
+  rowTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  rowTopMain: { flex: 1, flexDirection: "row", justifyContent: "space-between" },
+  rowLabel: { fontWeight: "700", color: colors.text, flex: 1 },
   rowAmount: { fontWeight: "700", color: colors.red },
   rowDesc: { marginTop: 4, color: colors.muted, fontSize: 14 },
   rowDate: { marginTop: 4, fontSize: 12, color: colors.muted },
+  readonlyCat: { marginBottom: spacing.md, color: colors.muted, fontSize: 15 },
   error: { color: colors.red },
 });

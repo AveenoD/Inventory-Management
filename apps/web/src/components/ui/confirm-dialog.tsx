@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 export function ConfirmDialog({
   open,
   title,
@@ -21,9 +24,15 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  if (!open) return null;
+  const [mounted, setMounted] = useState(false);
 
-  return (
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div className="modal-overlay" onClick={onCancel}>
       <div className="confirm-dialog card" onClick={(e) => e.stopPropagation()} role="alertdialog">
         <h3 className="confirm-dialog__title">{title}</h3>
@@ -38,6 +47,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

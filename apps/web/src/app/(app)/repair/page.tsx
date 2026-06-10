@@ -17,7 +17,8 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Calendar, Clock, IndianRupee, Search, Trash2, Wrench } from "lucide-react";
+import { RowActionMenu } from "@/components/ui/row-action-menu";
+import { Calendar, Clock, IndianRupee, Search, Wrench } from "lucide-react";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
 
 type Tab = "all" | "active" | "pending" | "delivered" | "unrepairable";
@@ -27,6 +28,52 @@ const PART_OTHER = "__other__";
 function moneyFieldValue(amount: string | undefined) {
   const n = parseMoneyInput(amount || "");
   return n > 0 ? String(n) : "";
+}
+
+type EditDraft = {
+  date: string;
+  customerName: string;
+  customerPhone: string;
+  device: string;
+  issueDescription: string;
+  repairCost: string;
+  customerCharge: string;
+};
+
+function jobToEditDraft(job: RepairJobDto): EditDraft {
+  return {
+    date: job.date,
+    customerName: job.customerName ?? "",
+    customerPhone: job.customerPhone ?? "",
+    device: job.device ?? "",
+    issueDescription: job.issueDescription ?? "",
+    repairCost: moneyFieldValue(job.repairCost),
+    customerCharge: moneyFieldValue(job.customerCharge || job.salePrice),
+  };
+}
+
+function canEditPricing(status: RepairJobStatus) {
+  return (
+    status === "RECEIVED" ||
+    status === "IN_PROGRESS" ||
+    status === "REPAIRED_PENDING_PICKUP"
+  );
+}
+
+const REPAIR_ACTIONS_NARROW_MQ = "(max-width: 1200px)";
+
+function useNarrowRepairActions() {
+  const [narrow, setNarrow] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(REPAIR_ACTIONS_NARROW_MQ);
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  return narrow;
 }
 
 const TABS: { key: Tab; label: string; status?: RepairJobStatus }[] = [
@@ -74,8 +121,12 @@ export default function RepairPage() {
   const [otherPartName, setOtherPartName] = useState("");
   const [deliveredAt, setDeliveredAt] = useState(today);
   const [deleteTarget, setDeleteTarget] = useState<RepairJobDto | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [editingJob, setEditingJob] = useState<RepairJobDto | null>(null);
+  const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
 
   const tabDef = TABS.find((t) => t.key === tab)!;
+  const narrowActions = useNarrowRepairActions();
 
   useEffect(() => {
     const t = setTimeout(() => setCustomerSearchDebounced(customerSearch.trim().toLowerCase()), 250);
@@ -173,6 +224,28 @@ export default function RepairPage() {
     },
   });
 
+  const editJob = useMutation({
+    mutationFn: (payload: { job: RepairJobDto; draft: EditDraft }) =>
+      api.updateRepairJob(monthId!, payload.job.id, {
+        status: payload.job.status as RepairJobStatus,
+        date: payload.draft.date,
+        customerName: payload.draft.customerName.trim(),
+        customerPhone: payload.draft.customerPhone.trim() || undefined,
+        device: payload.draft.device.trim(),
+        issueDescription: payload.draft.issueDescription.trim(),
+        ...(canEditPricing(payload.job.status as RepairJobStatus) && {
+          repairCost: parseMoneyInput(payload.draft.repairCost),
+          customerCharge: parseMoneyInput(payload.draft.customerCharge),
+        }),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setEditingJob(null);
+      setEditDraft(null);
+      editJob.reset();
+    },
+  });
+
   const updateStatus = useMutation({
     mutationFn: (payload: {
       jobId: string;
@@ -234,6 +307,75 @@ export default function RepairPage() {
     setActionJob(job);
     setActionKind("deliver");
     setDeliveredAt(today);
+  }
+
+  function startEdit(job: RepairJobDto) {
+    setEditingJob(job);
+    setEditDraft(jobToEditDraft(job));
+    setOpenMenuId(null);
+  }
+
+  function closeEdit() {
+    setEditingJob(null);
+    setEditDraft(null);
+    editJob.reset();
+  }
+
+  function buildRepairMenuItems(r: RepairJobDto) {
+    const workflow: Array<{
+      key: string;
+      label: string;
+      onClick: () => void;
+      danger?: boolean;
+    }> = [];
+
+    if (r.status === "RECEIVED") {
+      workflow.push(
+        {
+          key: "start",
+          label: "Start repair",
+          onClick: () => updateStatus.mutate({ jobId: r.id, status: "IN_PROGRESS" }),
+        },
+        {
+          key: "unrepairable",
+          label: "Unrepairable",
+          onClick: () =>
+            updateStatus.mutate({ jobId: r.id, status: "UNREPAIRABLE_RETURNED" }),
+        },
+      );
+    } else if (r.status === "IN_PROGRESS") {
+      workflow.push(
+        {
+          key: "done",
+          label: "Repair done",
+          onClick: () => openComplete(r),
+        },
+        {
+          key: "unrepairable",
+          label: "Unrepairable",
+          onClick: () =>
+            updateStatus.mutate({ jobId: r.id, status: "UNREPAIRABLE_RETURNED" }),
+        },
+      );
+    } else if (r.status === "REPAIRED_PENDING_PICKUP") {
+      workflow.push({
+        key: "pickup",
+        label: "Customer picked up",
+        onClick: () => openDeliver(r),
+      });
+    }
+
+    const editDelete = [
+      { key: "edit", label: "Edit", onClick: () => startEdit(r) },
+      {
+        key: "delete",
+        label: "Delete",
+        danger: true,
+        onClick: () => setDeleteTarget(r),
+      },
+    ];
+
+    return narrowActions ? [...workflow, ...editDelete] : editDelete;
   }
 
   return (
@@ -388,7 +530,7 @@ export default function RepairPage() {
                   <th>Repair cost</th>
                   <th>Customer charge</th>
                   <th>Profit</th>
-                  <th>Actions</th>
+                  <th className="repair-col-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -430,73 +572,83 @@ export default function RepairPage() {
                           ? "On pickup"
                           : "—"}
                     </td>
-                    <td>
-                      <div className="repair-row-actions">
-                        {r.status === "RECEIVED" && (
-                          <>
-                            <button
-                              type="button"
-                              disabled={updateStatus.isPending}
-                              onClick={() =>
-                                updateStatus.mutate({ jobId: r.id, status: "IN_PROGRESS" })
-                              }
-                            >
-                              Start repair
-                            </button>
-                            <button
-                              type="button"
-                              disabled={updateStatus.isPending}
-                              onClick={() =>
-                                updateStatus.mutate({
-                                  jobId: r.id,
-                                  status: "UNREPAIRABLE_RETURNED",
-                                })
-                              }
-                            >
-                              Unrepairable
-                            </button>
-                          </>
-                        )}
-                        {r.status === "IN_PROGRESS" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openComplete(r)}
-                            >
-                              Repair done
-                            </button>
-                            <button
-                              type="button"
-                              disabled={updateStatus.isPending}
-                              onClick={() =>
-                                updateStatus.mutate({
-                                  jobId: r.id,
-                                  status: "UNREPAIRABLE_RETURNED",
-                                })
-                              }
-                            >
-                              Unrepairable
-                            </button>
-                          </>
-                        )}
-                        {r.status === "REPAIRED_PENDING_PICKUP" && (
-                          <button
-                            type="button"
-                            className="btn-sm"
-                            onClick={() => openDeliver(r)}
-                          >
-                            Customer picked up
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="inventory-stock-btn danger"
-                          title="Delete job"
-                          aria-label="Delete repair job"
-                          onClick={() => setDeleteTarget(r)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    <td className="repair-col-actions">
+                      <div className="repair-actions-cell">
+                        <div className="repair-actions-btns">
+                          {!narrowActions ? (
+                            <div className="repair-workflow-btns">
+                            {r.status === "RECEIVED" && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="repair-action-btn"
+                                  disabled={updateStatus.isPending}
+                                  onClick={() =>
+                                    updateStatus.mutate({ jobId: r.id, status: "IN_PROGRESS" })
+                                  }
+                                >
+                                  Start repair
+                                </button>
+                                <button
+                                  type="button"
+                                  className="repair-action-btn"
+                                  disabled={updateStatus.isPending}
+                                  onClick={() =>
+                                    updateStatus.mutate({
+                                      jobId: r.id,
+                                      status: "UNREPAIRABLE_RETURNED",
+                                    })
+                                  }
+                                >
+                                  Unrepairable
+                                </button>
+                              </>
+                            )}
+                            {r.status === "IN_PROGRESS" && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="repair-action-btn"
+                                  onClick={() => openComplete(r)}
+                                >
+                                  Repair done
+                                </button>
+                                <button
+                                  type="button"
+                                  className="repair-action-btn"
+                                  disabled={updateStatus.isPending}
+                                  onClick={() =>
+                                    updateStatus.mutate({
+                                      jobId: r.id,
+                                      status: "UNREPAIRABLE_RETURNED",
+                                    })
+                                  }
+                                >
+                                  Unrepairable
+                                </button>
+                              </>
+                            )}
+                            {r.status === "REPAIRED_PENDING_PICKUP" && (
+                              <button
+                                type="button"
+                                className="repair-action-btn"
+                                onClick={() => openDeliver(r)}
+                              >
+                                Picked up
+                              </button>
+                            )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="repair-actions-menu">
+                          <RowActionMenu
+                            open={openMenuId === r.id}
+                            disabled={removeJob.isPending || editJob.isPending || updateStatus.isPending}
+                            onToggle={() => setOpenMenuId((id) => (id === r.id ? null : r.id))}
+                            onClose={() => setOpenMenuId(null)}
+                            items={buildRepairMenuItems(r)}
+                          />
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -851,6 +1003,161 @@ export default function RepairPage() {
                 </button>
                 <button type="submit" disabled={updateStatus.isPending}>
                   {updateStatus.isPending ? "Saving…" : "Mark delivered"}
+                </button>
+              </div>
+            </form>
+          )}
+        </FormModal>
+
+        <FormModal
+          open={!!editingJob && !!editDraft}
+          title="Edit repair job"
+          subtitle={
+            editingJob
+              ? `${REPAIR_STATUS_LABELS[editingJob.status as RepairJobStatus] ?? editingJob.status} — changes save without changing status.`
+              : undefined
+          }
+          size="lg"
+          onClose={closeEdit}
+        >
+          {editingJob && editDraft && (
+            <form
+              className="modal-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editDraft.customerName.trim() || !editDraft.device.trim()) return;
+                editJob.mutate({ job: editingJob, draft: editDraft });
+              }}
+            >
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="edit-date">
+                    Date received
+                  </label>
+                  <input
+                    id="edit-date"
+                    type="date"
+                    value={editDraft.date}
+                    onChange={(e) =>
+                      setEditDraft((prev) => (prev ? { ...prev, date: e.target.value } : prev))
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="form-field__label" htmlFor="edit-phone">
+                    Phone <span className="form-field__optional">(optional)</span>
+                  </label>
+                  <input
+                    id="edit-phone"
+                    type="tel"
+                    value={editDraft.customerPhone}
+                    onChange={(e) =>
+                      setEditDraft((prev) =>
+                        prev ? { ...prev, customerPhone: e.target.value } : prev,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                <label className="form-field__label" htmlFor="edit-customer">
+                  Customer name
+                </label>
+                <input
+                  id="edit-customer"
+                  value={editDraft.customerName}
+                  onChange={(e) =>
+                    setEditDraft((prev) =>
+                      prev ? { ...prev, customerName: e.target.value } : prev,
+                    )
+                  }
+                  required
+                />
+              </div>
+
+              <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                <label className="form-field__label" htmlFor="edit-device">
+                  Device / model
+                </label>
+                <input
+                  id="edit-device"
+                  value={editDraft.device}
+                  onChange={(e) =>
+                    setEditDraft((prev) => (prev ? { ...prev, device: e.target.value } : prev))
+                  }
+                  required
+                />
+              </div>
+
+              <div className="form-field" style={{ marginTop: "0.85rem" }}>
+                <label className="form-field__label" htmlFor="edit-issue">
+                  Issue description
+                </label>
+                <textarea
+                  id="edit-issue"
+                  value={editDraft.issueDescription}
+                  onChange={(e) =>
+                    setEditDraft((prev) =>
+                      prev ? { ...prev, issueDescription: e.target.value } : prev,
+                    )
+                  }
+                  rows={3}
+                  required
+                />
+              </div>
+
+              {canEditPricing(editingJob.status as RepairJobStatus) ? (
+                <div className="form-row" style={{ marginTop: "0.85rem" }}>
+                  <div className="form-field">
+                    <label className="form-field__label" htmlFor="edit-repair-cost">
+                      Repair cost (your cost)
+                    </label>
+                    <input
+                      id="edit-repair-cost"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editDraft.repairCost}
+                      onChange={(e) =>
+                        setEditDraft((prev) =>
+                          prev ? { ...prev, repairCost: e.target.value } : prev,
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="form-field">
+                    <label className="form-field__label" htmlFor="edit-customer-charge">
+                      Customer charge
+                    </label>
+                    <input
+                      id="edit-customer-charge"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editDraft.customerCharge}
+                      onChange={(e) =>
+                        setEditDraft((prev) =>
+                          prev ? { ...prev, customerCharge: e.target.value } : prev,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="muted form-step__hint" style={{ marginTop: "0.85rem" }}>
+                  Pricing cannot be changed for delivered or unrepairable jobs.
+                </p>
+              )}
+
+              {editJob.error && <p className="error">{(editJob.error as Error).message}</p>}
+              <div className="modal-footer">
+                <button type="button" className="secondary" onClick={closeEdit}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={editJob.isPending}>
+                  {editJob.isPending ? "Saving…" : "Save changes"}
                 </button>
               </div>
             </form>

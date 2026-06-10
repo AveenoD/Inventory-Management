@@ -17,6 +17,18 @@ export const createExpenseEntrySchema = z.object({
   description: z.string().optional(),
 });
 
+export const updateExpenseEntrySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: expenseCategorySchema,
+  amount: z.coerce.number().min(0).transform(roundMoney),
+  description: z.string().optional(),
+});
+
+export const deleteExpenseEntrySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: expenseCategorySchema,
+});
+
 export const shopExpenseDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   salaryDescription: z.string().optional(),
