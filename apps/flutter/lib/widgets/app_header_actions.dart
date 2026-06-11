@@ -12,7 +12,13 @@ final unreadCountProvider = FutureProvider<int>((ref) async {
   try {
     final api = ref.watch(apiServiceProvider);
     final res = await api.getNotifications(page: 1, limit: 1);
-    return (res['unreadCount'] as int?) ?? 0;
+    final meta = res['meta'];
+    if (meta is Map) {
+      final count = meta['unreadCount'];
+      if (count is int) return count;
+      return int.tryParse(count?.toString() ?? '') ?? 0;
+    }
+    return 0;
   } catch (_) {
     return 0;
   }
@@ -27,38 +33,77 @@ class AppHeaderActions extends ConsumerWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            IconButton(
-              onPressed: () => context.push('/notifications'),
-              icon: const Icon(AppIcons.bell, color: AppColors.text, size: 22),
-            ),
-            if (unread > 0)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: AppColors.red,
-                    shape: BoxShape.circle,
-                  ),
-                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                  child: Text(
-                    unread > 9 ? '9+' : '$unread',
-                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-          ],
+        _HeaderIconButton(
+          icon: AppIcons.bell,
+          onPressed: () => context.push('/notifications'),
+          badge: unread > 0 ? (unread > 9 ? '9+' : '$unread') : null,
         ),
-        IconButton(
+        const SizedBox(width: AppSpacing.sm),
+        _HeaderIconButton(
+          icon: AppIcons.user,
           onPressed: () => context.push('/profile'),
-          icon: const Icon(AppIcons.user, color: AppColors.text, size: 22),
         ),
       ],
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.badge,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(icon, color: AppColors.text, size: 22),
+              if (badge != null)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFEF4444),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      badge!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

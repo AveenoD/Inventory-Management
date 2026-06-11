@@ -82,3 +82,31 @@ List<TransferSubService> getSubServicesForCategory(String categoryId) {
 Map<String, String> emptyTransferAmounts(String categoryId) {
   return {for (final s in getSubServicesForCategory(categoryId)) s.key: ''};
 }
+
+String getTransferCategoryLabel(String serviceKey) {
+  final catId = getCategoryForKey(serviceKey);
+  if (catId == null) return '—';
+  return transferCategories.firstWhere((c) => c.id == catId).label;
+}
+
+String getTransferSubLabel(String serviceKey) {
+  for (final cat in transferCategories) {
+    for (final sub in cat.subServices) {
+      if (sub.key == serviceKey) return sub.label;
+    }
+  }
+  if (serviceKey == 'dmt86Nepal') return 'NEPAL';
+  return getTransferLabel(serviceKey);
+}
+
+List<TransferSubService> filterSubServicesFor(String categoryFilter) {
+  if (categoryFilter == 'ALL') {
+    return transferServiceKeys
+        .map((k) => TransferSubService(key: k, label: getTransferLabel(k)))
+        .toList();
+  }
+  final cat = transferCategories.firstWhere((c) => c.id == categoryFilter);
+  return cat.subServices
+      .map((sub) => TransferSubService(key: sub.key, label: '${cat.label} — ${sub.label}'))
+      .toList();
+}

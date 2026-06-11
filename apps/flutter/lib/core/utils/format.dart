@@ -13,7 +13,18 @@ double parseMoney(String? value) {
   return double.tryParse(value.replaceAll(',', '').trim()) ?? 0;
 }
 
+double sumMoney(Iterable<dynamic> values) =>
+    values.fold<double>(0, (sum, v) => sum + parseMoney('$v'));
+
 String todayIso() => _dateFmt.format(DateTime.now());
+
+String formatDateLabel(String date) {
+  try {
+    return DateFormat('EEEE, d MMM, yyyy', 'en_IN').format(DateTime.parse(date));
+  } catch (_) {
+    return date;
+  }
+}
 
 String formatDisplayDate(String iso) {
   try {

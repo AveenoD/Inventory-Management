@@ -58,3 +58,7 @@ String formatRechargeTypeLabel(Map<String, dynamic> row) {
   final parts = getRechargeBreakdownParts(row);
   return parts.map((p) => p.label).join(' + ').isEmpty ? '—' : parts.map((p) => p.label).join(' + ');
 }
+
+bool rechargeEntryHasType(Map<String, dynamic> row, String entryType) {
+  return getRechargeBreakdownParts(row).any((p) => p.entryType == entryType);
+}

@@ -21,6 +21,8 @@ abstract final class AppIcons {
   static const arrowLeftRight = Icons.swap_horiz;
   static const creditCard = Icons.credit_card;
   static const wrench = Icons.build_outlined;
+  static const search = Icons.search;
+  static const clock = Icons.schedule_outlined;
   static const zap = Icons.bolt_outlined;
   static const layoutDashboard = Icons.dashboard_outlined;
   static const eye = Icons.visibility_outlined;

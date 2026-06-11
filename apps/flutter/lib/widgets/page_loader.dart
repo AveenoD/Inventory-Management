@@ -25,20 +25,66 @@ class PageLoader extends StatelessWidget {
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.message, this.action});
+  const EmptyState({
+    super.key,
+    this.title,
+    this.description,
+    String? message,
+    this.action,
+  }) : message = message;
 
-  final String message;
+  final String? title;
+  final String? description;
+  final String? message;
   final Widget? action;
 
   @override
   Widget build(BuildContext context) {
+    if (title != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppColors.text),
+            ),
+            if (description != null) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                description!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14, color: AppColors.muted, height: 20 / 14),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(width: double.infinity, child: action!),
+            ],
+          ],
+        ),
+      );
+    }
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.muted, fontSize: 15)),
+            Text(
+              message ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.muted, fontSize: 15),
+            ),
             if (action != null) ...[const SizedBox(height: AppSpacing.lg), action!],
           ],
         ),
@@ -47,22 +93,3 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-class AppBadge extends StatelessWidget {
-  const AppBadge({super.key, required this.label, this.color = AppColors.accentLight, this.textColor = AppColors.accent});
-
-  final String label;
-  final Color color;
-  final Color textColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor)),
-    );
-  }
-}

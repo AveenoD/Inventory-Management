@@ -20,6 +20,7 @@ class ScreenShell extends StatelessWidget {
     this.onBack,
     this.hideHeaderActions = false,
     this.headerAction,
+    this.titleFontSize = 22,
   });
 
   final String title;
@@ -33,6 +34,7 @@ class ScreenShell extends StatelessWidget {
   final VoidCallback? onBack;
   final bool hideHeaderActions;
   final Widget? headerAction;
+  final double titleFontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +66,7 @@ class ScreenShell extends StatelessWidget {
         PageHeader(
           title: title,
           subtitle: subtitle,
+          titleFontSize: titleFontSize,
           action: headerAction ??
               (showBack || hideHeaderActions ? null : const AppHeaderActions()),
         ),

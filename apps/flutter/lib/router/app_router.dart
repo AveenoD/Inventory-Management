@@ -49,7 +49,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/sales', builder: (_, __) => const SalesListScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/repair', builder: (_, __) => const RepairScreen()),
+            GoRoute(
+              path: '/repair',
+              builder: (_, state) => RepairScreen(
+                openIntake: state.uri.queryParameters['intake'] == '1',
+              ),
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
@@ -89,7 +94,7 @@ class _TabShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: navigationShell,
+      body: SizedBox.expand(child: navigationShell),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppColors.card,

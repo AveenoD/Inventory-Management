@@ -32,6 +32,21 @@ abstract final class AppColors {
   static const iconBgPurple = Color(0xFFFAF5FF);
   static const iconBgTeal = Color(0xFFF0FDFA);
   static const iconBgOrange = Color(0xFFFFF7ED);
+
+  /// Stat card icon wells — matches Expo gradient-stat-card.tsx ICON_BG
+  static const statIconBgBlue = Color(0xFFDBEAFE);
+  static const statIconBgGreen = Color(0xFFDCFCE7);
+  static const statIconBgAmber = Color(0xFFFEF3C7);
+  static const statIconBgPurple = Color(0xFFEDE9FE);
+  static const statIconBgTeal = Color(0xFFCCFBF1);
+  static const statIconBgOrange = Color(0xFFFFEDD5);
+
+  /// Quick action tile backgrounds — matches Expo dashboard QuickAction bg map
+  static const actionBgBlue = Color(0xFFEFF6FF);
+  static const actionBgGreen = Color(0xFFF0FDF4);
+  static const actionBgOrange = Color(0xFFFFF7ED);
+  static const actionBgPurple = Color(0xFFFAF5FF);
+  static const actionBgTeal = Color(0xFFF0FDFA);
 }
 
 abstract final class AppRadii {

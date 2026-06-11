@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +14,10 @@ import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/form_modal.dart';
 import '../../widgets/gradient_stat_card.dart';
+import '../../widgets/metrics_grid.dart';
+import '../../widgets/page_loader.dart';
 import '../../widgets/screen_shell.dart';
+import '../../widgets/simple_bar_chart.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -40,9 +42,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDashboard();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
   }
 
   @override
@@ -53,8 +53,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   String _dismissKey(int year, int month) => 'sk-opening-dismissed-$year-$month';
 
-  Future<void> _loadDashboard() async {
+  Future<void> _loadDashboard({String? date}) async {
+    final queryDate = date ?? _date;
     final auth = ref.read(authProvider);
+    if (auth.isLoading) {
+      if (mounted) {
+        setState(() {
+          _loading = true;
+          _error = null;
+        });
+      }
+      return;
+    }
     if (!auth.isAuthenticated) {
       if (mounted) {
         setState(() {
@@ -72,7 +82,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     try {
       final api = ref.read(apiServiceProvider);
-      final res = await api.getToday(date: _date);
+      final res = await api.getToday(date: queryDate);
       if (!mounted) return;
       setState(() {
         _data = res;
@@ -164,6 +174,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (prev?.isLoading == true && !next.isLoading && next.isAuthenticated) {
+        _loadDashboard();
+      }
+    });
+
     final monthState = ref.watch(monthProvider).valueOrNull;
     final raw = _data ?? <String, dynamic>{};
     final year = _asInt(raw['year']) ?? monthState?.year ?? DateTime.now().year;
@@ -172,14 +188,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final isRefreshing = _loading && _data != null;
 
     return Stack(
+      fit: StackFit.expand,
       children: [
-        ScreenShell(
-          title: 'Dashboard',
-          subtitle: monthLbl,
-          refreshing: isRefreshing,
-          onRefresh: _loadDashboard,
-          headerAction: const AppHeaderActions(),
-          child: _buildContent(context, raw),
+        Positioned.fill(
+          child: ScreenShell(
+            title: 'Dashboard',
+            subtitle: monthLbl,
+            titleFontSize: 24,
+            refreshing: isRefreshing,
+            onRefresh: _loadDashboard,
+            headerAction: const AppHeaderActions(),
+            child: _buildContent(context, raw),
+          ),
         ),
         FormModal(
           visible: _editOpeningOpen,
@@ -211,9 +231,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Widget _buildContent(BuildContext context, Map<String, dynamic> raw) {
     if (_loading && _data == null) {
-      return const Padding(
-        padding: EdgeInsets.only(top: AppSpacing.xl),
-        child: Center(child: CircularProgressIndicator()),
+      return SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.45,
+        child: const PageLoader(message: 'Loading dashboard…'),
       );
     }
     if (_error != null && _data == null) {
@@ -228,10 +248,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DateField(value: _date, onChanged: (v) => setState(() => _date = v)),
+        DateField(
+          value: _date,
+          onChanged: (v) {
+            setState(() => _date = v);
+            _loadDashboard(date: v);
+          },
+        ),
         const SizedBox(height: AppSpacing.md),
         Text(
-          'TODAY - $dateText',
+          'Today — $dateText'.toUpperCase(),
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
@@ -255,6 +281,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _lowStockCard(context, lowStock),
         const SizedBox(height: AppSpacing.md),
         _salesOverviewCard(sales7Days),
+        const SizedBox(height: AppSpacing.xl * 3),
       ],
     );
   }
@@ -298,67 +325,62 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _todayMetrics(Map<String, dynamic> raw) {
-    return Column(
+    return MetricsGrid(
       children: [
-        Row(
-          children: [
-            GradientStatCard(
-              tone: StatTone.blue,
-              icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
-              label: "Today's Sales",
-              value: formatMoney(_asNum(raw['salesTotal'])),
-              sub: '${_asInt(raw['salesCount']) ?? 0} bills',
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.green,
-              icon: const Icon(AppIcons.trendingUp, color: AppColors.green, size: 18),
-              label: "Today's Profit",
-              value: formatMoney(_asNum(raw['salesProfit'])),
-              sub: 'Sales profit',
-            ),
-          ],
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.blue,
+            icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
+            label: "Today's Sales",
+            value: formatMoney(_asNum(raw['salesTotal'])),
+            sub: '${_asInt(raw['salesCount']) ?? 0} bills',
+          ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            GradientStatCard(
-              tone: StatTone.orange,
-              icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
-              label: 'Repair Profit',
-              value: formatMoney(_asNum(raw['repairProfit'])),
-              sub:
-                  '${_asInt(raw['repairDelivered']) ?? 0} delivered - ${_asInt(raw['repairUndeliveredCount']) ?? 0} undelivered',
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.purple,
-              icon: const Icon(AppIcons.smartphone, color: AppColors.purple, size: 18),
-              label: 'Recharge',
-              value: formatMoney(_asNum(raw['rechargeTotal'])),
-              sub: 'Recharge income',
-            ),
-          ],
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.green,
+            icon: const Icon(AppIcons.trendingUp, color: AppColors.green, size: 18),
+            label: "Today's Profit",
+            value: formatMoney(_asNum(raw['salesProfit'])),
+            sub: 'Sales profit',
+          ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            GradientStatCard(
-              tone: StatTone.teal,
-              icon: const Icon(AppIcons.arrowLeftRight, color: Color(0xFF0D9488), size: 18),
-              label: 'Transfer',
-              value: formatMoney(_asNum(raw['transferTotal'])),
-              sub: 'Money transfer',
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.purple,
-              icon: const Icon(AppIcons.trendingUp, color: AppColors.purple, size: 18),
-              label: 'Total Profit',
-              value: formatMoney(_asNum(raw['todayTotalProfit'])),
-              sub: 'All sources today',
-            ),
-          ],
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.orange,
+            icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
+            label: 'Repair Profit',
+            value: formatMoney(_asNum(raw['repairProfit'])),
+            sub:
+                '${_asInt(raw['repairDelivered']) ?? 0} delivered · ${_asInt(raw['repairUndeliveredCount']) ?? 0} undelivered',
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.purple,
+            icon: const Icon(AppIcons.smartphone, color: AppColors.purple, size: 18),
+            label: 'Recharge',
+            value: formatMoney(_asNum(raw['rechargeTotal'])),
+            sub: 'Recharge income',
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.teal,
+            icon: const Icon(AppIcons.arrowLeftRight, color: Color(0xFF0D9488), size: 18),
+            label: 'Transfer',
+            value: formatMoney(_asNum(raw['transferTotal'])),
+            sub: 'Money transfer',
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.purple,
+            icon: const Icon(AppIcons.trendingUp, color: AppColors.purple, size: 18),
+            label: 'Total Profit',
+            value: formatMoney(_asNum(raw['todayTotalProfit'])),
+            sub: 'All sources today',
+          ),
         ),
       ],
     );
@@ -394,69 +416,69 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _monthMetrics(Map<String, dynamic> raw) {
-    return Column(
+    return MetricsGrid(
       children: [
-        Row(
-          children: [
-            GradientStatCard(
-              tone: StatTone.blue,
-              icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
-              label: 'Month Sales',
-              value: formatMoney(_asNum(raw['monthSalesTotal'])),
-              sub: 'Mobile & accessories',
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.green,
-              icon: const Icon(AppIcons.smartphone, color: AppColors.green, size: 18),
-              label: 'Recharge + Transfer',
-              value: formatMoney(_asNum(raw['monthRechargeTransferTotal'])),
-            ),
-          ],
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.blue,
+            icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
+            label: 'Month Sales',
+            value: formatMoney(_asNum(raw['monthSalesTotal'])),
+            sub: 'Mobile & accessories',
+          ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            GradientStatCard(
-              tone: StatTone.orange,
-              icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
-              label: 'Repair Profit',
-              value: formatMoney(_asNum(raw['monthRepairProfit'])),
-              sub: (_asInt(raw['repairPendingCount']) ?? 0) > 0
-                  ? 'Undelivered: ${formatMoney(_asNum(raw['repairPendingBalance']))} (${_asInt(raw['repairPendingCount']) ?? 0})'
-                  : 'No undelivered',
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.purple,
-              icon: const Icon(AppIcons.package, color: AppColors.purple, size: 18),
-              label: 'Stock Value',
-              value: formatMoney(_asNum(raw['stockValue'])),
-            ),
-          ],
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.green,
+            icon: const Icon(AppIcons.smartphone, color: AppColors.green, size: 18),
+            label: 'Recharge + Transfer',
+            value: formatMoney(_asNum(raw['monthRechargeTransferTotal'])),
+          ),
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Row(
-          children: [
-            Expanded(
-              child: Stack(
-                children: [
-                  GradientStatCard(
-                    tone: StatTone.teal,
-                    icon: const Icon(AppIcons.wallet, color: Color(0xFF0D9488), size: 18),
-                    label: 'Opening Balance',
-                    value: formatMoney(_asNum(raw['openingBalance'])),
-                    sub: 'Tap edit to change',
-                  ),
-                  Positioned(
-                    top: AppSpacing.md,
-                    right: AppSpacing.md,
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.orange,
+            icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
+            label: 'Repair Profit',
+            value: formatMoney(_asNum(raw['monthRepairProfit'])),
+            sub: (_asInt(raw['repairPendingCount']) ?? 0) > 0
+                ? 'Undelivered: ${formatMoney(_asNum(raw['repairPendingBalance']))} (${_asInt(raw['repairPendingCount']) ?? 0})'
+                : 'No undelivered',
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.purple,
+            icon: const Icon(AppIcons.package, color: AppColors.purple, size: 18),
+            label: 'Stock Value',
+            value: formatMoney(_asNum(raw['stockValue'])),
+          ),
+        ),
+        MetricCell(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadii.card),
+            child: Stack(
+              clipBehavior: Clip.hardEdge,
+              children: [
+                GradientStatCard(
+                  tone: StatTone.teal,
+                  icon: const Icon(AppIcons.wallet, color: Color(0xFF0D9488), size: 18),
+                  label: 'Opening Balance',
+                  value: formatMoney(_asNum(raw['openingBalance'])),
+                  sub: 'Tap edit to change',
+                ),
+                Positioned(
+                  top: AppSpacing.md,
+                  right: AppSpacing.md,
+                  child: Material(
+                    color: Colors.transparent,
                     child: InkWell(
                       onTap: () {
                         _openingController.text = _stringNum(raw['openingBalance']);
                         setState(() => _editOpeningOpen = true);
                       },
                       child: const Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(AppIcons.pencil, size: 12, color: AppColors.accent),
                           SizedBox(width: 4),
@@ -472,17 +494,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: AppSpacing.sm),
-            GradientStatCard(
-              tone: StatTone.blue,
-              icon: const Icon(AppIcons.banknote, color: AppColors.accent, size: 18),
-              label: 'Month Net Profit',
-              value: formatMoney(_asNum(raw['monthNetProfit'])),
-            ),
-          ],
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.blue,
+            icon: const Icon(AppIcons.banknote, color: AppColors.accent, size: 18),
+            label: 'Month Net Profit',
+            value: formatMoney(_asNum(raw['monthNetProfit'])),
+          ),
         ),
       ],
     );
@@ -492,16 +515,20 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return _SectionCard(
       title: 'Quick Actions',
       subtitle: 'Shortcuts for common tasks',
-      child: Wrap(
-        spacing: AppSpacing.sm,
-        runSpacing: AppSpacing.sm,
-        children: const [
-          _QuickActionTile(title: '+ New Sale', sub: 'Create invoice', tone: StatTone.blue, route: '/sales/new'),
-          _QuickActionTile(title: '+ Recharge', sub: 'Add recharge', tone: StatTone.green, route: '/recharge'),
-          _QuickActionTile(title: '+ Repair', sub: 'New intake', tone: StatTone.orange, route: '/repair?intake=1'),
-          _QuickActionTile(title: '+ Product', sub: 'Inventory', tone: StatTone.purple, route: '/inventory'),
-          _QuickActionTile(title: '+ Transfer', sub: 'Money transfer', tone: StatTone.teal, route: '/transfer'),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: const [
+              _QuickActionTile(title: '+ New Sale', sub: 'Create invoice', tone: StatTone.blue, route: '/sales/new'),
+              _QuickActionTile(title: '+ Recharge', sub: 'Add recharge', tone: StatTone.green, route: '/recharge'),
+              _QuickActionTile(title: '+ Repair', sub: 'New intake', tone: StatTone.orange, route: '/repair?intake=1'),
+              _QuickActionTile(title: '+ Product', sub: 'Inventory', tone: StatTone.purple, route: '/inventory'),
+              _QuickActionTile(title: '+ Transfer', sub: 'Money transfer', tone: StatTone.teal, route: '/transfer'),
+            ],
+          );
+        },
       ),
     );
   }
@@ -509,9 +536,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _activityCard(BuildContext context, List<Map<String, dynamic>> activity) {
     return _SectionCard(
       title: "Today's Activity",
-      action: TextButton(
-        onPressed: () => context.push('/sales'),
-        child: const Text('View all'),
+      action: GestureDetector(
+        onTap: () => context.push('/sales'),
+        child: const Text(
+          'View all',
+          style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600, fontSize: 14),
+        ),
       ),
       child: activity.isEmpty
           ? const Padding(
@@ -534,9 +564,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _lowStockCard(BuildContext context, List<Map<String, dynamic>> lowStock) {
     return _SectionCard(
       title: 'Low Stock Alerts',
-      action: TextButton(
-        onPressed: () => context.push('/inventory'),
-        child: const Text('View all'),
+      action: GestureDetector(
+        onTap: () => context.push('/inventory'),
+        child: const Text(
+          'View all',
+          style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600, fontSize: 14),
+        ),
       ),
       child: lowStock.isEmpty
           ? const Padding(
@@ -559,11 +592,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Widget _salesOverviewCard(List<Map<String, dynamic>> series) {
-    final points = <_ChartPoint>[
+    final points = <({String label, num value})>[
       for (final x in series)
-        _ChartPoint(
-          label: (_asString(x['date']) ?? '').length >= 10
-              ? (_asString(x['date']) ?? '').substring(5, 10)
+        (
+          label: (_asString(x['date']) ?? '').length >= 5
+              ? (_asString(x['date']) ?? '').substring(5)
               : (_asString(x['date']) ?? '-'),
           value: _asNum(x['total']),
         ),
@@ -571,7 +604,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return _SectionCard(
       title: 'Sales Overview',
       subtitle: 'Last 7 days',
-      child: _SevenDayBarChart(points: points),
+      child: SimpleBarChart(data: points),
     );
   }
 
@@ -700,43 +733,51 @@ class _QuickActionTile extends StatelessWidget {
   Color _bgColor() {
     switch (tone) {
       case StatTone.green:
-        return AppColors.iconBgGreen;
+        return AppColors.actionBgGreen;
       case StatTone.orange:
-        return AppColors.iconBgOrange;
+        return AppColors.actionBgOrange;
       case StatTone.purple:
-        return AppColors.iconBgPurple;
+        return AppColors.actionBgPurple;
       case StatTone.teal:
-        return AppColors.iconBgTeal;
+        return AppColors.actionBgTeal;
       case StatTone.amber:
-        return AppColors.iconBgAmber;
+        return AppColors.actionBgOrange;
       case StatTone.blue:
-        return AppColors.iconBgBlue;
+        return AppColors.actionBgBlue;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = (MediaQuery.of(context).size.width - (AppSpacing.lg * 2) - AppSpacing.sm - (AppSpacing.lg * 2)) / 2;
-    return InkWell(
-      onTap: () => context.push(route),
-      borderRadius: BorderRadius.circular(AppRadii.input),
-      child: Container(
-        width: width,
-        decoration: BoxDecoration(
-          color: _bgColor(),
-          borderRadius: BorderRadius.circular(AppRadii.input),
-          border: Border.all(color: AppColors.border),
-        ),
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text, fontSize: 14)),
-            const SizedBox(height: 2),
-            Text(sub, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - AppSpacing.sm) / 2;
+        return SizedBox(
+          width: width,
+          child: Material(
+            color: _bgColor(),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.input),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            child: InkWell(
+              onTap: () => context.push(route),
+              borderRadius: BorderRadius.circular(AppRadii.input),
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(sub, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -856,74 +897,3 @@ class _LowStockRow extends StatelessWidget {
   }
 }
 
-class _ChartPoint {
-  const _ChartPoint({required this.label, required this.value});
-
-  final String label;
-  final num value;
-}
-
-class _SevenDayBarChart extends StatelessWidget {
-  const _SevenDayBarChart({required this.points});
-
-  final List<_ChartPoint> points;
-
-  @override
-  Widget build(BuildContext context) {
-    if (points.isEmpty) {
-      return const SizedBox(
-        height: 160,
-        child: Center(
-          child: Text('No chart data', style: TextStyle(color: AppColors.muted)),
-        ),
-      );
-    }
-    final maxY = points.map((e) => e.value.toDouble()).reduce((a, b) => a > b ? a : b);
-    return SizedBox(
-      height: 190,
-      child: BarChart(
-        BarChartData(
-          minY: 0,
-          maxY: maxY <= 0 ? 1 : maxY * 1.2,
-          gridData: const FlGridData(show: false),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  final idx = value.toInt();
-                  if (idx < 0 || idx >= points.length) return const SizedBox.shrink();
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      points[idx].label,
-                      style: const TextStyle(fontSize: 10, color: AppColors.muted),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          barGroups: [
-            for (var i = 0; i < points.length; i++)
-              BarChartGroupData(
-                x: i,
-                barRods: [
-                  BarChartRodData(
-                    toY: points[i].value.toDouble(),
-                    width: 18,
-                    borderRadius: BorderRadius.circular(4),
-                    color: AppColors.accent,
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}

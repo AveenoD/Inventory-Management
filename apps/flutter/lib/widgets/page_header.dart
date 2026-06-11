@@ -8,11 +8,13 @@ class PageHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.action,
+    this.titleFontSize = 22,
   });
 
   final String title;
   final String? subtitle;
   final Widget? action;
+  final double titleFontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -27,8 +29,8 @@ class PageHeader extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 22,
+                  style: TextStyle(
+                    fontSize: titleFontSize,
                     fontWeight: FontWeight.w700,
                     color: AppColors.text,
                   ),

@@ -83,12 +83,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     controller: _email,
                     hint: 'owner@skmobile.local',
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() {}),
                   ),
                   const FieldLabel('Password'),
                   AppTextField(
                     controller: _password,
                     hint: '••••••••',
                     obscureText: !_showPassword,
+                    onChanged: (_) => setState(() {}),
                     suffix: IconButton(
                       icon: Icon(_showPassword ? AppIcons.eyeOff : AppIcons.eye, color: AppColors.muted),
                       onPressed: () => setState(() => _showPassword = !_showPassword),

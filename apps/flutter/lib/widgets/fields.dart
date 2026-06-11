@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_icons.dart';
 
 class FieldLabel extends StatelessWidget {
   const FieldLabel(this.text, {super.key, this.optional = false});
@@ -94,15 +95,91 @@ class DateField extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label != null) FieldLabel(label!),
-        InkWell(
-          onTap: () => _pick(context),
-          borderRadius: BorderRadius.circular(AppRadii.input),
-          child: InputDecorator(
-            decoration: const InputDecoration(),
-            child: Text(value, style: const TextStyle(fontSize: 16)),
+        Material(
+          color: AppColors.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.input),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          child: InkWell(
+            onTap: () => _pick(context),
+            borderRadius: BorderRadius.circular(AppRadii.input),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(AppIcons.calendar, size: 16, color: AppColors.muted),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    value.isEmpty ? 'Select date' : value,
+                    style: const TextStyle(fontSize: 16, height: 20 / 16, color: AppColors.text),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class SearchField extends StatefulWidget {
+  const SearchField({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.placeholder,
+  });
+
+  final String value;
+  final ValueChanged<String> onChanged;
+  final String? placeholder;
+
+  @override
+  State<SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<SearchField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(SearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value && widget.value != _controller.text) {
+      _controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      onChanged: widget.onChanged,
+      decoration: InputDecoration(
+        hintText: widget.placeholder,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: false,
+        contentPadding: EdgeInsets.zero,
+        isDense: true,
+      ),
+      style: const TextStyle(fontSize: 16, color: AppColors.text),
+      autocorrect: false,
+      textCapitalization: TextCapitalization.none,
     );
   }
 }
