@@ -4,6 +4,12 @@ import { roundMoney } from "../lib/money.js";
 
 const moneyAmount = z.coerce.number().transform(roundMoney);
 
+/** Form/API empty string or missing → 0; recharge face value is optional */
+const optionalMoneyAmount = z.preprocess(
+  (val) => (val === "" || val == null ? undefined : val),
+  moneyAmount.optional(),
+).default(0);
+
 export const rechargeEntrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   operator: z.enum(["AIRTEL", "JIO", "VI", "BSNL", "ALL_IN_ONE"]),
@@ -16,7 +22,7 @@ export const rechargeEntrySchema = z.object({
 export const rechargeBatchSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   operator: z.enum(["AIRTEL", "JIO", "VI", "BSNL", "ALL_IN_ONE"]),
-  rechargeAmount: moneyAmount.default(0),
+  rechargeAmount: optionalMoneyAmount,
   saleProfit: moneyAmount.default(0),
   chillar: moneyAmount.default(0),
   act: moneyAmount.default(0),

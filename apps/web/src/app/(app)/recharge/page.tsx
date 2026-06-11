@@ -81,6 +81,24 @@ function rowToDraft(row: RechargeRow): EditDraft {
   };
 }
 
+function toRechargePayload(
+  date: string,
+  operator: RechargeOperator,
+  rechargeAmountRaw: string,
+  income: typeof EMPTY_AMOUNTS,
+) {
+  const face = parseMoneyInput(rechargeAmountRaw);
+  return {
+    date,
+    operator,
+    ...(face > 0 ? { rechargeAmount: face } : {}),
+    saleProfit: parseMoneyInput(income.saleProfit),
+    chillar: parseMoneyInput(income.chillar),
+    act: parseMoneyInput(income.act),
+    mnp: parseMoneyInput(income.mnp),
+  };
+}
+
 type OperatorKey = RechargeOperator;
 
 const OPERATOR_LOGOS: Record<OperatorKey, { primary: string; fallback: string | null; alt: string }> = {
@@ -190,15 +208,7 @@ export default function RechargePage() {
 
   const create = useMutation({
     mutationFn: () =>
-      api.createRechargeEntry(monthId!, {
-        date,
-        operator,
-        rechargeAmount: parseMoneyInput(rechargeAmount),
-        saleProfit: parseMoneyInput(amounts.saleProfit),
-        chillar: parseMoneyInput(amounts.chillar),
-        act: parseMoneyInput(amounts.act),
-        mnp: parseMoneyInput(amounts.mnp),
-      }),
+      api.createRechargeEntry(monthId!, toRechargePayload(date, operator, rechargeAmount, amounts)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });
@@ -210,15 +220,16 @@ export default function RechargePage() {
 
   const update = useMutation({
     mutationFn: ({ entryId, draft }: { entryId: string; draft: EditDraft }) =>
-      api.updateRechargeEntry(monthId!, entryId, {
-        date: draft.date,
-        operator: draft.operator,
-        rechargeAmount: parseMoneyInput(draft.rechargeAmount),
-        saleProfit: parseMoneyInput(draft.saleProfit),
-        chillar: parseMoneyInput(draft.chillar),
-        act: parseMoneyInput(draft.act),
-        mnp: parseMoneyInput(draft.mnp),
-      }),
+      api.updateRechargeEntry(
+        monthId!,
+        entryId,
+        toRechargePayload(draft.date, draft.operator, draft.rechargeAmount, {
+          saleProfit: draft.saleProfit,
+          chillar: draft.chillar,
+          act: draft.act,
+          mnp: draft.mnp,
+        }),
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recharge-entries", monthId] });
       qc.invalidateQueries({ queryKey: ["today"] });

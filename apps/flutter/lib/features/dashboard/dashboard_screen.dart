@@ -1,0 +1,929 @@
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import '../../core/theme/app_icons.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/api/api_error.dart';
+import '../../core/auth/auth_provider.dart';
+import '../../core/month/month_provider.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/utils/format.dart';
+import '../../widgets/app_header_actions.dart';
+import '../../widgets/buttons.dart';
+import '../../widgets/fields.dart';
+import '../../widgets/form_modal.dart';
+import '../../widgets/gradient_stat_card.dart';
+import '../../widgets/screen_shell.dart';
+
+class DashboardScreen extends ConsumerStatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  String _date = todayIso();
+  bool _monthSummaryOpen = false;
+  bool _editOpeningOpen = false;
+  bool _day1PromptOpen = false;
+  bool _loading = true;
+  bool _savingOpening = false;
+  String? _error;
+  String? _openingError;
+  String _openingInput = '';
+  Map<String, dynamic>? _data;
+  final TextEditingController _openingController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDashboard();
+    });
+  }
+
+  @override
+  void dispose() {
+    _openingController.dispose();
+    super.dispose();
+  }
+
+  String _dismissKey(int year, int month) => 'sk-opening-dismissed-$year-$month';
+
+  Future<void> _loadDashboard() async {
+    final auth = ref.read(authProvider);
+    if (!auth.isAuthenticated) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Please login to view dashboard.';
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = await api.getToday(date: _date);
+      if (!mounted) return;
+      setState(() {
+        _data = res;
+        _loading = false;
+      });
+      await _handleDayOnePrompt(res);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiError ? e.message : 'Could not load dashboard.';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _handleDayOnePrompt(Map<String, dynamic> payload) async {
+    final isFirst = payload['isFirstDayOfMonth'] == true;
+    if (!isFirst) {
+      if (mounted) {
+        setState(() => _day1PromptOpen = false);
+      }
+      return;
+    }
+    final year = _asInt(payload['year']);
+    final month = _asInt(payload['month']);
+    if (year == null || month == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final dismissed = prefs.getString(_dismissKey(year, month));
+    if (dismissed != null) return;
+    final showPrompt = payload['showOpeningBalancePrompt'] == true;
+    final opening = _stringNum(payload['openingBalance']);
+    if (!showPrompt && opening != '0.00') return;
+    final suggested = _stringNum(payload['suggestedOpeningBalance']);
+    if (!mounted) return;
+    setState(() {
+      _openingInput = suggested.isNotEmpty ? suggested : opening;
+      _openingController.text = _openingInput;
+      _day1PromptOpen = true;
+    });
+  }
+
+  Future<void> _dismissDayOnePrompt() async {
+    final raw = _data;
+    if (raw == null) return;
+    final year = _asInt(raw['year']);
+    final month = _asInt(raw['month']);
+    if (year == null || month == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_dismissKey(year, month), '1');
+    if (!mounted) return;
+    setState(() => _day1PromptOpen = false);
+  }
+
+  Future<void> _saveOpeningBalance() async {
+    final amount = parseMoney(_openingController.text);
+    if (amount < 0) {
+      setState(() => _openingError = 'Amount must be non-negative.');
+      return;
+    }
+    final raw = _data;
+    final monthId = _asString(raw?['monthId']) ?? ref.read(monthProvider).valueOrNull?.monthId;
+    if (monthId == null) {
+      setState(() => _openingError = 'Month not loaded.');
+      return;
+    }
+
+    setState(() {
+      _openingError = null;
+      _savingOpening = true;
+    });
+    try {
+      final api = ref.read(apiServiceProvider);
+      await api.updateMonth(monthId, {'openingBalance': amount});
+      await _dismissDayOnePrompt();
+      if (!mounted) return;
+      setState(() {
+        _savingOpening = false;
+        _editOpeningOpen = false;
+      });
+      await _loadDashboard();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingOpening = false;
+        _openingError = e is ApiError ? e.message : 'Could not update opening balance.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final monthState = ref.watch(monthProvider).valueOrNull;
+    final raw = _data ?? <String, dynamic>{};
+    final year = _asInt(raw['year']) ?? monthState?.year ?? DateTime.now().year;
+    final month = _asInt(raw['month']) ?? monthState?.month ?? DateTime.now().month;
+    final monthLbl = monthLabel(year, month);
+    final isRefreshing = _loading && _data != null;
+
+    return Stack(
+      children: [
+        ScreenShell(
+          title: 'Dashboard',
+          subtitle: monthLbl,
+          refreshing: isRefreshing,
+          onRefresh: _loadDashboard,
+          headerAction: const AppHeaderActions(),
+          child: _buildContent(context, raw),
+        ),
+        FormModal(
+          visible: _editOpeningOpen,
+          title: 'Edit Opening Balance',
+          subtitle: 'Opening balance for $monthLbl',
+          onClose: () => setState(() => _editOpeningOpen = false),
+          child: _buildOpeningModalBody(
+            confirmLabel: 'Save',
+            onCancel: () => setState(() => _editOpeningOpen = false),
+          ),
+        ),
+        FormModal(
+          visible: _day1PromptOpen,
+          title: 'Set Opening Balance',
+          subtitle: 'New month started ($monthLbl)',
+          onClose: _dismissDayOnePrompt,
+          child: _buildOpeningModalBody(
+            confirmLabel: 'Set Balance',
+            cancelLabel: 'Later',
+            hint: _stringNum(raw['suggestedOpeningBalance']).isEmpty
+                ? null
+                : 'Previous month closing: ${formatMoney(_asNum(raw['suggestedOpeningBalance']))}',
+            onCancel: _dismissDayOnePrompt,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent(BuildContext context, Map<String, dynamic> raw) {
+    if (_loading && _data == null) {
+      return const Padding(
+        padding: EdgeInsets.only(top: AppSpacing.xl),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_error != null && _data == null) {
+      return _ErrorCard(message: _error!, onRetry: _loadDashboard);
+    }
+
+    final activity = _asList(raw['recentActivity']);
+    final lowStock = _asList(raw['lowStockItems']);
+    final sales7Days = _asList(raw['salesLast7Days']);
+    final dateText = _asString(raw['date']) ?? _date;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DateField(value: _date, onChanged: (v) => setState(() => _date = v)),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'TODAY - $dateText',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: AppColors.muted,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _todayMetrics(raw),
+        const SizedBox(height: AppSpacing.md),
+        _monthSummaryToggle(),
+        if (_monthSummaryOpen) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _monthMetrics(raw),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        _quickActions(context),
+        const SizedBox(height: AppSpacing.md),
+        _activityCard(context, activity),
+        const SizedBox(height: AppSpacing.md),
+        _lowStockCard(context, lowStock),
+        const SizedBox(height: AppSpacing.md),
+        _salesOverviewCard(sales7Days),
+      ],
+    );
+  }
+
+  Widget _buildOpeningModalBody({
+    required String confirmLabel,
+    required VoidCallback onCancel,
+    String cancelLabel = 'Cancel',
+    String? hint,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hint != null)
+          Text(hint, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+        if (hint != null) const SizedBox(height: AppSpacing.sm),
+        const FieldLabel('Opening balance'),
+        AppTextField(
+          controller: _openingController,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          hint: 'Amount',
+          onChanged: (v) => _openingInput = v,
+        ),
+        if (_openingError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: Text(
+              _openingError!,
+              style: const TextStyle(color: AppColors.red, fontSize: 13),
+            ),
+          ),
+        ModalActions(
+          onCancel: () => onCancel(),
+          onConfirm: _saveOpeningBalance,
+          confirmLabel: confirmLabel,
+          cancelLabel: cancelLabel,
+          loading: _savingOpening,
+        ),
+      ],
+    );
+  }
+
+  Widget _todayMetrics(Map<String, dynamic> raw) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            GradientStatCard(
+              tone: StatTone.blue,
+              icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
+              label: "Today's Sales",
+              value: formatMoney(_asNum(raw['salesTotal'])),
+              sub: '${_asInt(raw['salesCount']) ?? 0} bills',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.green,
+              icon: const Icon(AppIcons.trendingUp, color: AppColors.green, size: 18),
+              label: "Today's Profit",
+              value: formatMoney(_asNum(raw['salesProfit'])),
+              sub: 'Sales profit',
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            GradientStatCard(
+              tone: StatTone.orange,
+              icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
+              label: 'Repair Profit',
+              value: formatMoney(_asNum(raw['repairProfit'])),
+              sub:
+                  '${_asInt(raw['repairDelivered']) ?? 0} delivered - ${_asInt(raw['repairUndeliveredCount']) ?? 0} undelivered',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.purple,
+              icon: const Icon(AppIcons.smartphone, color: AppColors.purple, size: 18),
+              label: 'Recharge',
+              value: formatMoney(_asNum(raw['rechargeTotal'])),
+              sub: 'Recharge income',
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            GradientStatCard(
+              tone: StatTone.teal,
+              icon: const Icon(AppIcons.arrowLeftRight, color: Color(0xFF0D9488), size: 18),
+              label: 'Transfer',
+              value: formatMoney(_asNum(raw['transferTotal'])),
+              sub: 'Money transfer',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.purple,
+              icon: const Icon(AppIcons.trendingUp, color: AppColors.purple, size: 18),
+              label: 'Total Profit',
+              value: formatMoney(_asNum(raw['todayTotalProfit'])),
+              sub: 'All sources today',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _monthSummaryToggle() {
+    return InkWell(
+      onTap: () => setState(() => _monthSummaryOpen = !_monthSummaryOpen),
+      borderRadius: BorderRadius.circular(AppRadii.card),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadii.card),
+          border: Border.all(color: AppColors.border),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _monthSummaryOpen ? 'Hide month summary' : 'View month summary',
+                style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.text),
+              ),
+            ),
+            Transform.rotate(
+              angle: _monthSummaryOpen ? 3.14159 : 0,
+              child: const Icon(AppIcons.chevronDown, color: AppColors.muted, size: 16),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _monthMetrics(Map<String, dynamic> raw) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            GradientStatCard(
+              tone: StatTone.blue,
+              icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
+              label: 'Month Sales',
+              value: formatMoney(_asNum(raw['monthSalesTotal'])),
+              sub: 'Mobile & accessories',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.green,
+              icon: const Icon(AppIcons.smartphone, color: AppColors.green, size: 18),
+              label: 'Recharge + Transfer',
+              value: formatMoney(_asNum(raw['monthRechargeTransferTotal'])),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            GradientStatCard(
+              tone: StatTone.orange,
+              icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
+              label: 'Repair Profit',
+              value: formatMoney(_asNum(raw['monthRepairProfit'])),
+              sub: (_asInt(raw['repairPendingCount']) ?? 0) > 0
+                  ? 'Undelivered: ${formatMoney(_asNum(raw['repairPendingBalance']))} (${_asInt(raw['repairPendingCount']) ?? 0})'
+                  : 'No undelivered',
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.purple,
+              icon: const Icon(AppIcons.package, color: AppColors.purple, size: 18),
+              label: 'Stock Value',
+              value: formatMoney(_asNum(raw['stockValue'])),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  GradientStatCard(
+                    tone: StatTone.teal,
+                    icon: const Icon(AppIcons.wallet, color: Color(0xFF0D9488), size: 18),
+                    label: 'Opening Balance',
+                    value: formatMoney(_asNum(raw['openingBalance'])),
+                    sub: 'Tap edit to change',
+                  ),
+                  Positioned(
+                    top: AppSpacing.md,
+                    right: AppSpacing.md,
+                    child: InkWell(
+                      onTap: () {
+                        _openingController.text = _stringNum(raw['openingBalance']);
+                        setState(() => _editOpeningOpen = true);
+                      },
+                      child: const Row(
+                        children: [
+                          Icon(AppIcons.pencil, size: 12, color: AppColors.accent),
+                          SizedBox(width: 4),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            GradientStatCard(
+              tone: StatTone.blue,
+              icon: const Icon(AppIcons.banknote, color: AppColors.accent, size: 18),
+              label: 'Month Net Profit',
+              value: formatMoney(_asNum(raw['monthNetProfit'])),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _quickActions(BuildContext context) {
+    return _SectionCard(
+      title: 'Quick Actions',
+      subtitle: 'Shortcuts for common tasks',
+      child: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: const [
+          _QuickActionTile(title: '+ New Sale', sub: 'Create invoice', tone: StatTone.blue, route: '/sales/new'),
+          _QuickActionTile(title: '+ Recharge', sub: 'Add recharge', tone: StatTone.green, route: '/recharge'),
+          _QuickActionTile(title: '+ Repair', sub: 'New intake', tone: StatTone.orange, route: '/repair?intake=1'),
+          _QuickActionTile(title: '+ Product', sub: 'Inventory', tone: StatTone.purple, route: '/inventory'),
+          _QuickActionTile(title: '+ Transfer', sub: 'Money transfer', tone: StatTone.teal, route: '/transfer'),
+        ],
+      ),
+    );
+  }
+
+  Widget _activityCard(BuildContext context, List<Map<String, dynamic>> activity) {
+    return _SectionCard(
+      title: "Today's Activity",
+      action: TextButton(
+        onPressed: () => context.push('/sales'),
+        child: const Text('View all'),
+      ),
+      child: activity.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Center(
+                child: Text(
+                  'No activity today yet',
+                  style: TextStyle(color: AppColors.muted, fontSize: 14),
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                for (final item in activity) _ActivityRow(item: item),
+              ],
+            ),
+    );
+  }
+
+  Widget _lowStockCard(BuildContext context, List<Map<String, dynamic>> lowStock) {
+    return _SectionCard(
+      title: 'Low Stock Alerts',
+      action: TextButton(
+        onPressed: () => context.push('/inventory'),
+        child: const Text('View all'),
+      ),
+      child: lowStock.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(AppIcons.alertTriangle, color: AppColors.muted, size: 16),
+                  SizedBox(width: AppSpacing.sm),
+                  Text('No low stock items', style: TextStyle(color: AppColors.muted)),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                for (final item in lowStock) _LowStockRow(item: item),
+              ],
+            ),
+    );
+  }
+
+  Widget _salesOverviewCard(List<Map<String, dynamic>> series) {
+    final points = <_ChartPoint>[
+      for (final x in series)
+        _ChartPoint(
+          label: (_asString(x['date']) ?? '').length >= 10
+              ? (_asString(x['date']) ?? '').substring(5, 10)
+              : (_asString(x['date']) ?? '-'),
+          value: _asNum(x['total']),
+        ),
+    ];
+    return _SectionCard(
+      title: 'Sales Overview',
+      subtitle: 'Last 7 days',
+      child: _SevenDayBarChart(points: points),
+    );
+  }
+
+  static num _asNum(dynamic value) {
+    if (value is num) return value;
+    return num.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  static String? _asString(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString();
+    return s.isEmpty ? null : s;
+  }
+
+  static String _stringNum(dynamic value) => value?.toString() ?? '';
+
+  static List<Map<String, dynamic>> _asList(dynamic value) {
+    if (value is List) {
+      return value.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Could not load dashboard',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(message, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+          const SizedBox(height: AppSpacing.md),
+          PrimaryButton(label: 'Retry', onPressed: onRetry),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.title,
+    this.subtitle,
+    this.action,
+    required this.child,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? action;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+                ),
+              ),
+              if (action != null) action!,
+            ],
+          ),
+          if (subtitle != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, bottom: AppSpacing.md),
+              child: Text(subtitle!, style: const TextStyle(fontSize: 13, color: AppColors.muted)),
+            )
+          else
+            const SizedBox(height: AppSpacing.md),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.title,
+    required this.sub,
+    required this.tone,
+    required this.route,
+  });
+
+  final String title;
+  final String sub;
+  final StatTone tone;
+  final String route;
+
+  Color _bgColor() {
+    switch (tone) {
+      case StatTone.green:
+        return AppColors.iconBgGreen;
+      case StatTone.orange:
+        return AppColors.iconBgOrange;
+      case StatTone.purple:
+        return AppColors.iconBgPurple;
+      case StatTone.teal:
+        return AppColors.iconBgTeal;
+      case StatTone.amber:
+        return AppColors.iconBgAmber;
+      case StatTone.blue:
+        return AppColors.iconBgBlue;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = (MediaQuery.of(context).size.width - (AppSpacing.lg * 2) - AppSpacing.sm - (AppSpacing.lg * 2)) / 2;
+    return InkWell(
+      onTap: () => context.push(route),
+      borderRadius: BorderRadius.circular(AppRadii.input),
+      child: Container(
+        width: width,
+        decoration: BoxDecoration(
+          color: _bgColor(),
+          borderRadius: BorderRadius.circular(AppRadii.input),
+          border: Border.all(color: AppColors.border),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text, fontSize: 14)),
+            const SizedBox(height: 2),
+            Text(sub, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.item});
+
+  final Map<String, dynamic> item;
+
+  Color _dotColor() {
+    switch (item['type']) {
+      case 'RECHARGE':
+        return AppColors.green;
+      case 'TRANSFER':
+        return const Color(0xFF0D9488);
+      case 'REPAIR':
+        return AppColors.amber;
+      case 'SALE':
+      default:
+        return AppColors.accent;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = item['subtitle']?.toString();
+    final amount = item['amount'];
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(color: _dotColor(), shape: BoxShape.circle),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['title']?.toString() ?? 'Activity',
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.text, fontSize: 14),
+                ),
+                if (subtitle != null && subtitle.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                  ),
+              ],
+            ),
+          ),
+          if (amount != null)
+            Text(
+              formatMoney(amount is num ? amount : num.tryParse(amount.toString()) ?? 0),
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text, fontSize: 14),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LowStockRow extends StatelessWidget {
+  const _LowStockRow({required this.item});
+
+  final Map<String, dynamic> item;
+
+  @override
+  Widget build(BuildContext context) {
+    final qty = int.tryParse(item['stockQty']?.toString() ?? '') ?? 0;
+    final min = item['minStock']?.toString() ?? '-';
+    final out = qty <= 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name']?.toString() ?? 'Unnamed',
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.text),
+                ),
+                Text('Min $min', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: out ? const Color(0xFFFEF2F2) : AppColors.amberBg,
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+            ),
+            child: Text(
+              out ? 'Out of stock' : '$qty left',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: out ? AppColors.red : AppColors.amber,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChartPoint {
+  const _ChartPoint({required this.label, required this.value});
+
+  final String label;
+  final num value;
+}
+
+class _SevenDayBarChart extends StatelessWidget {
+  const _SevenDayBarChart({required this.points});
+
+  final List<_ChartPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    if (points.isEmpty) {
+      return const SizedBox(
+        height: 160,
+        child: Center(
+          child: Text('No chart data', style: TextStyle(color: AppColors.muted)),
+        ),
+      );
+    }
+    final maxY = points.map((e) => e.value.toDouble()).reduce((a, b) => a > b ? a : b);
+    return SizedBox(
+      height: 190,
+      child: BarChart(
+        BarChartData(
+          minY: 0,
+          maxY: maxY <= 0 ? 1 : maxY * 1.2,
+          gridData: const FlGridData(show: false),
+          borderData: FlBorderData(show: false),
+          titlesData: FlTitlesData(
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final idx = value.toInt();
+                  if (idx < 0 || idx >= points.length) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      points[idx].label,
+                      style: const TextStyle(fontSize: 10, color: AppColors.muted),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          barGroups: [
+            for (var i = 0; i < points.length; i++)
+              BarChartGroupData(
+                x: i,
+                barRods: [
+                  BarChartRodData(
+                    toY: points[i].value.toDouble(),
+                    width: 18,
+                    borderRadius: BorderRadius.circular(4),
+                    color: AppColors.accent,
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -89,14 +89,6 @@ function buildRechargeEntryData(body: RechargeBatchInput) {
     { entryType: "MNP", amount: body.mnp },
   ];
 
-  const totalIncome = d(body.saleProfit)
-    .plus(d(body.chillar))
-    .plus(d(body.act))
-    .plus(d(body.mnp));
-  if (body.rechargeAmount <= 0 && totalIncome.lte(0)) {
-    throw new Error("Enter recharge amount or at least one income amount");
-  }
-
   const faceValue = body.rechargeAmount > 0 ? fmt(d(body.rechargeAmount)) : null;
   const saleProfit = fmt(d(body.saleProfit));
   const chillar = fmt(d(body.chillar));

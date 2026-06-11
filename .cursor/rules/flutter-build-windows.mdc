@@ -1,0 +1,61 @@
+---
+description: Flutter Android build rules for SK Mobile on Windows — MUST follow before any flutter build
+globs: apps/flutter/**
+alwaysApply: false
+---
+
+# Flutter Build — Windows (SK Mobile)
+
+## Root causes of slow/failed builds (do NOT ignore)
+
+| Issue | Detail |
+|-------|--------|
+| Cross-drive | Project `D:\Office\SK MOBILE`, pub cache `C:\Users\...\Pub\Cache` — Kotlin incremental compile **fails** |
+| Hung Gradle | Stale `java` PID holds `.gradle/buildOutputCleanup/*.lock` → 20+ min hang |
+| `flutter clean` | Forces full rebuild (~15–25 min). **Never** run unless package/deps changed |
+| Bad Gradle flags | `workers.max=1` + `parallel=false` (from RN fixes) made Flutter builds 3× slower |
+| Path length | `D:\Office\SK MOBILE` space + length breaks native builds; use junction `C:\SM` |
+| Package name | Firebase requires `com.skmobile.shop` (not `com.skmobile.sk_mobile`) |
+| Icons | `lucide_icons` breaks on Flutter 3.44+ — use `AppIcons` in `lib/core/theme/app_icons.dart` |
+
+## Pre-build checklist (every time)
+
+1. Kill hung processes: `Get-Process java -EA SilentlyContinue | Stop-Process -Force`
+2. `cd C:\SM\apps\flutter\android; .\gradlew.bat --stop`
+3. If lock/Kotlin cache error: delete `android\.gradle\buildOutputCleanup` and pub plugin `android\build` folders (`share_plus`, `shared_preferences_android`, etc.)
+4. Build **only** from `C:\SM\apps\flutter` (junction → `D:\Office\SK MOBILE`)
+5. **Do not** `flutter clean` for routine rebuilds
+
+## Correct `apps/flutter/android/gradle.properties`
+
+```
+kotlin.incremental=false
+org.gradle.parallel=true
+org.gradle.caching=true
+org.gradle.jvmargs=-Xmx4G
+```
+
+`kotlin.incremental=false` is **required** on this machine (C: cache vs D: project).
+
+## Build command
+
+```powershell
+$env:Path = "C:\flutter\bin;" + $env:Path
+cd C:\SM\apps\flutter
+flutter build apk --release
+```
+
+Copy output → `build/android/sk-mobile-flutter.apk`
+
+## Expected time
+
+- Incremental rebuild: **3–6 min**
+- After `flutter clean` or first build: **8–12 min**
+- If >15 min: **stop**, kill java, clear locks, retry — do not wait 25+ min
+
+## APK verify before Firebase upload
+
+```powershell
+aapt dump badging app-release.apk | findstr package
+# Must show: package: name='com.skmobile.shop'
+```
