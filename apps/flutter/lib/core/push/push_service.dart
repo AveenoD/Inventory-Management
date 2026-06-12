@@ -36,13 +36,12 @@ final pushServiceProvider = Provider<PushService>((ref) {
 });
 
 final pushSetupProvider = Provider<void>((ref) {
-  final auth = ref.watch(authProvider);
-  ref.listen(authProvider, (_, next) {
-    if (!next.isLoading && next.isAuthenticated) {
+  void setup(AuthState auth) {
+    if (!auth.isLoading && auth.isAuthenticated) {
       ref.read(pushServiceProvider).setupIfAuthenticated(true);
     }
-  });
-  if (!auth.isLoading && auth.isAuthenticated) {
-    ref.read(pushServiceProvider).setupIfAuthenticated(true);
   }
+
+  setup(ref.read(authProvider));
+  ref.listen<AuthState>(authProvider, (_, next) => setup(next));
 });

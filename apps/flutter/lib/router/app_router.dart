@@ -108,7 +108,8 @@ class _TabShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SizedBox.expand(child: navigationShell),
+      backgroundColor: AppColors.pageBg,
+      body: navigationShell,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppColors.card,

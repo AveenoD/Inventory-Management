@@ -6,6 +6,10 @@ import 'app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env');
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    // Release APK still works — [resolveApiBaseUrl] falls back to production URL.
+  }
   runApp(const ProviderScope(child: SkMobileApp()));
 }

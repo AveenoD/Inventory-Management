@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/api/api_error.dart';
@@ -12,7 +13,6 @@ import '../../widgets/filter_picker.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/gradient_stat_card.dart';
 import '../../widgets/metrics_grid.dart';
-import '../../widgets/month_gate.dart';
 import '../../widgets/page_loader.dart';
 import '../../widgets/screen_shell.dart';
 import '../../widgets/simple_bar_chart.dart';
@@ -58,8 +58,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _loadAll({bool refresh = false}) async {
+    final auth = ref.read(authProvider);
+    if (auth.isLoading) return;
+
     final month = await ref.read(monthProvider.future);
-    if (month.monthId == null) return;
+    if (month.monthId == null) {
+      if (mounted) {
+        setState(() {
+          _dashLoading = false;
+          _todayLoading = false;
+          _refreshing = false;
+          _dashError = 'No business month selected.';
+        });
+      }
+      return;
+    }
 
     if (refresh) {
       setState(() => _refreshing = true);
@@ -183,6 +196,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authProvider, (prev, next) {
+      if (next.isLoading || !next.isAuthenticated) return;
+      if (prev?.isLoading == true || prev?.isAuthenticated != true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
+      }
+    });
+
     ref.listen<AsyncValue<MonthState>>(monthProvider, (prev, next) {
       final id = next.valueOrNull?.monthId;
       final prevId = prev?.valueOrNull?.monthId;
@@ -191,38 +211,49 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       }
     });
 
-    final month = ref.watch(monthProvider).valueOrNull;
+    final monthAsync = ref.watch(monthProvider);
+    final month = monthAsync.valueOrNull;
     final subtitle = month == null ? null : monthLabel(month.year, month.month);
     final dashboard = _dashboard;
     final breakdown = _breakdown();
     final recent = _recentActivity();
 
-    return MonthGate(
-      child: ScreenShell(
-        title: 'Reports',
-        subtitle: subtitle,
-        showBack: true,
-        refreshing: _refreshing,
-        onRefresh: () => _loadAll(refresh: true),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildToolbar(dashboard != null),
-            if (_dashLoading)
-              const PageLoader(message: 'Loading report…')
-            else if (_dashError != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                child: Text(_dashError!, style: const TextStyle(color: AppColors.red)),
-              )
-            else if (dashboard != null) ...[
-              _buildMetrics(dashboard),
-              _buildBreakdownCard(breakdown),
-              _buildChartCard(),
-              _buildActivityCard(recent),
+    return ScreenShell(
+      title: 'Reports',
+      subtitle: subtitle,
+      showBack: true,
+      refreshing: _refreshing,
+      onRefresh: () => _loadAll(refresh: true),
+      child: monthAsync.when(
+        loading: () => const PageLoader(message: 'Preparing business month…'),
+        error: (e, _) => _MonthError(message: '$e', onRetry: () => ref.invalidate(monthProvider)),
+        data: (state) {
+          if (state.isLoading) {
+            return const PageLoader(message: 'Preparing business month…');
+          }
+          if (state.monthId == null) {
+            return _NoMonth(onOpenMonths: () => context.push('/months'));
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildToolbar(dashboard != null),
+              if (_dashLoading)
+                const PageLoader(message: 'Loading report…')
+              else if (_dashError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: Text(_dashError!, style: const TextStyle(color: AppColors.red)),
+                )
+              else if (dashboard != null) ...[
+                _buildMetrics(dashboard),
+                _buildBreakdownCard(breakdown),
+                _buildChartCard(),
+                _buildActivityCard(recent),
+              ],
             ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -425,6 +456,72 @@ class _ActivityRow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _MonthError extends StatelessWidget {
+  const _MonthError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Could not load business month',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(message, style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+          const SizedBox(height: AppSpacing.md),
+          ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+            child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoMonth extends StatelessWidget {
+  const _NoMonth({required this.onOpenMonths});
+
+  final VoidCallback onOpenMonths;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const Text(
+          'No business month selected',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        const Text(
+          'Create or select a business month to continue.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.muted),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        ElevatedButton(
+          onPressed: onOpenMonths,
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+          child: const Text('Go to Business Months'),
+        ),
+      ],
     );
   }
 }

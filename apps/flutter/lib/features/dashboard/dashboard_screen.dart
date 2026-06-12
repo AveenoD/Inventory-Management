@@ -56,7 +56,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _loadDashboard({String? date}) async {
     final queryDate = date ?? _date;
     final auth = ref.read(authProvider);
-    if (auth.isLoading) return;
+    if (auth.isLoading) {
+      if (mounted && _data == null) {
+        setState(() => _loading = true);
+      }
+      return;
+    }
     if (!auth.isAuthenticated) {
       if (mounted) {
         setState(() {
@@ -184,16 +189,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: ScreenShell(
-            title: 'Dashboard',
-            subtitle: monthLbl,
-            titleFontSize: 24,
-            refreshing: isRefreshing,
-            onRefresh: _loadDashboard,
-            headerAction: const AppHeaderActions(),
-            child: _buildContent(context, raw),
-          ),
+        ScreenShell(
+          title: 'Dashboard',
+          subtitle: monthLbl,
+          titleFontSize: 24,
+          refreshing: isRefreshing,
+          onRefresh: _loadDashboard,
+          headerAction: const AppHeaderActions(),
+          child: _buildContent(context, raw),
         ),
         FormModal(
           visible: _editOpeningOpen,
