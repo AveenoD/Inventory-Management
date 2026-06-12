@@ -281,26 +281,10 @@ class _RechargeScreenState extends ConsumerState<RechargeScreen> {
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(AppRadii.input),
-              border: Border.all(color: AppColors.border),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: [
-                const Icon(AppIcons.search, size: 16, color: AppColors.muted),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: SearchField(
-                    value: _search,
-                    onChanged: _onSearchChanged,
-                    placeholder: 'Search operator, type…',
-                  ),
-                ),
-              ],
-            ),
+          SearchField(
+            value: _search,
+            onChanged: _onSearchChanged,
+            placeholder: 'Search operator, type…',
           ),
           const SizedBox(height: AppSpacing.sm),
           PrimaryButton(label: '+ Create Recharge', onPressed: _openCreate),

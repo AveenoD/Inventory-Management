@@ -56,15 +56,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Future<void> _loadDashboard({String? date}) async {
     final queryDate = date ?? _date;
     final auth = ref.read(authProvider);
-    if (auth.isLoading) {
-      if (mounted) {
-        setState(() {
-          _loading = true;
-          _error = null;
-        });
-      }
-      return;
-    }
+    if (auth.isLoading) return;
     if (!auth.isAuthenticated) {
       if (mounted) {
         setState(() {
@@ -75,8 +67,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       return;
     }
 
+    if (!mounted) return;
     setState(() {
-      _loading = true;
+      _loading = _data == null;
       _error = null;
     });
 
@@ -175,7 +168,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (prev, next) {
-      if (prev?.isLoading == true && !next.isLoading && next.isAuthenticated) {
+      if (next.isLoading || !next.isAuthenticated) return;
+      if (prev?.isLoading == true || prev?.isAuthenticated != true) {
         _loadDashboard();
       }
     });

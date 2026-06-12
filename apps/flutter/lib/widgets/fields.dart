@@ -124,17 +124,27 @@ class DateField extends StatelessWidget {
   }
 }
 
+/// Search input — mirrors apps/mobile/components/ui/form-fields.tsx SearchField + searchRow.
+abstract final class SearchFieldMetrics {
+  static const fontSize = 15.0;
+  static const verticalPadding = 10.0;
+  static const minHeight = 40.0;
+}
+
 class SearchField extends StatefulWidget {
   const SearchField({
     super.key,
     required this.value,
     required this.onChanged,
     this.placeholder,
+    this.showIcon = true,
   });
 
   final String value;
   final ValueChanged<String> onChanged;
   final String? placeholder;
+  /// When true, renders the tab-page search row (icon + field). When false, standalone bordered field (parties).
+  final bool showIcon;
 
   @override
   State<SearchField> createState() => _SearchFieldState();
@@ -142,6 +152,18 @@ class SearchField extends StatefulWidget {
 
 class _SearchFieldState extends State<SearchField> {
   late final TextEditingController _controller;
+
+  static const _textStyle = TextStyle(
+    fontSize: SearchFieldMetrics.fontSize,
+    height: 20 / SearchFieldMetrics.fontSize,
+    color: AppColors.text,
+  );
+
+  static const _hintStyle = TextStyle(
+    fontSize: SearchFieldMetrics.fontSize,
+    height: 20 / SearchFieldMetrics.fontSize,
+    color: AppColors.muted,
+  );
 
   @override
   void initState() {
@@ -163,23 +185,76 @@ class _SearchFieldState extends State<SearchField> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  InputDecoration _decoration({required EdgeInsets contentPadding}) {
+    return InputDecoration(
+      hintText: widget.placeholder,
+      hintStyle: _hintStyle,
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      filled: false,
+      contentPadding: contentPadding,
+      isDense: true,
+      isCollapsed: true,
+    );
+  }
+
+  Widget _input({required EdgeInsets contentPadding}) {
     return TextField(
       controller: _controller,
       onChanged: widget.onChanged,
-      decoration: InputDecoration(
-        hintText: widget.placeholder,
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        focusedBorder: InputBorder.none,
-        filled: false,
-        contentPadding: EdgeInsets.zero,
-        isDense: true,
-      ),
-      style: const TextStyle(fontSize: 16, color: AppColors.text),
+      style: _textStyle,
+      decoration: _decoration(contentPadding: contentPadding),
       autocorrect: false,
       textCapitalization: TextCapitalization.none,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.showIcon) {
+      return Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: SearchFieldMetrics.minHeight),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadii.input),
+          border: Border.all(color: AppColors.border),
+        ),
+        alignment: Alignment.center,
+        child: _input(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: SearchFieldMetrics.verticalPadding,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: SearchFieldMetrics.minHeight),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.only(left: AppSpacing.md),
+      child: Row(
+        children: [
+          const Icon(AppIcons.search, size: 16, color: AppColors.muted),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: _input(
+              contentPadding: const EdgeInsets.only(
+                right: AppSpacing.md,
+                top: SearchFieldMetrics.verticalPadding,
+                bottom: SearchFieldMetrics.verticalPadding,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../core/auth/auth_provider.dart';
 import '../../core/month/month_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/format.dart';
+import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/form_modal.dart';
 import '../../widgets/month_gate.dart';
@@ -118,18 +119,27 @@ class _PartiesScreenState extends ConsumerState<PartiesScreen> {
               children: [
                 Row(
                   children: [
-                    Expanded(child: AppTextField(hint: 'Search…', onChanged: (v) => setState(() => _search = v))),
-                    IconButton.filled(
-                      style: IconButton.styleFrom(backgroundColor: AppColors.accent),
-                      onPressed: () => setState(() => _partyModal = true),
-                      icon: const Icon(AppIcons.userPlus, color: Colors.white, size: 18),
+                    Expanded(
+                      child: SecondaryButton(
+                        label: '+ Party',
+                        onPressed: () => setState(() => _partyModal = true),
+                      ),
                     ),
-                    IconButton.filled(
-                      style: IconButton.styleFrom(backgroundColor: AppColors.accent),
-                      onPressed: () => setState(() => _txModal = true),
-                      icon: const Icon(AppIcons.plus, color: Colors.white),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: PrimaryButton(
+                        label: '+ Transaction',
+                        onPressed: () => setState(() => _txModal = true),
+                      ),
                     ),
                   ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SearchField(
+                  value: _search,
+                  onChanged: (v) => setState(() => _search = v),
+                  placeholder: 'Search party…',
+                  showIcon: false,
                 ),
                 if (_loading) const PageLoader()
                 else ...filtered.map((t) => Card(

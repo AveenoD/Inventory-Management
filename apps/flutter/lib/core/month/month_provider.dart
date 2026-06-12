@@ -18,55 +18,69 @@ class MonthState {
   final Object? error;
 }
 
+int? _asInt(dynamic value) {
+  if (value is int) return value;
+  return int.tryParse(value?.toString() ?? '');
+}
+
+String? _asString(dynamic value) {
+  if (value == null) return null;
+  final s = value.toString();
+  return s.isEmpty ? null : s;
+}
+
 String? _pickMonthId(List<Map<String, dynamic>> list, int year, int month) {
   if (list.isEmpty) return null;
   for (final x in list) {
-    if (x['year'] == year && x['month'] == month) return x['id'] as String?;
+    if (_asInt(x['year']) == year && _asInt(x['month']) == month) {
+      return _asString(x['id']);
+    }
   }
   final sorted = [...list]
     ..sort((a, b) {
-      final ay = (a['year'] as int?) ?? 0;
-      final by = (b['year'] as int?) ?? 0;
+      final ay = _asInt(a['year']) ?? 0;
+      final by = _asInt(b['year']) ?? 0;
       if (ay != by) return by.compareTo(ay);
-      return ((b['month'] as int?) ?? 0).compareTo((a['month'] as int?) ?? 0);
+      return (_asInt(b['month']) ?? 0).compareTo(_asInt(a['month']) ?? 0);
     });
-  return sorted.first['id'] as String?;
+  return _asString(sorted.first['id']);
 }
 
 final monthProvider = FutureProvider<MonthState>((ref) async {
   final auth = ref.watch(authProvider);
+  final now = DateTime.now();
+
+  // Wait for auth — same as Expo: enabled only when !authLoading.
   if (auth.isLoading) {
     return MonthState(
       monthId: null,
-      year: DateTime.now().year,
-      month: DateTime.now().month,
+      year: now.year,
+      month: now.month,
       isLoading: true,
     );
   }
   if (!auth.isAuthenticated) {
-    final now = DateTime.now();
     return MonthState(monthId: null, year: now.year, month: now.month, isLoading: false);
   }
 
   final api = ref.watch(apiServiceProvider);
-  final now = DateTime.now();
-  try {
-    final res = await api.getMonths(page: 1, limit: 24);
-    final list = (res['data'] as List<dynamic>? ?? [])
-        .cast<Map<String, dynamic>>();
-    return MonthState(
-      monthId: _pickMonthId(list, now.year, now.month),
-      year: now.year,
-      month: now.month,
-      isLoading: false,
-    );
-  } catch (e) {
-    return MonthState(
-      monthId: null,
-      year: now.year,
-      month: now.month,
-      isLoading: false,
-      error: e,
-    );
+  final res = await api.getMonths(page: 1, limit: 24);
+  var list = (res['data'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+
+  // Mirror API month-resolver: ensure current month exists (dashboard /today does this too).
+  if (list.isEmpty) {
+    final created = await api.createMonth({
+      'year': now.year,
+      'month': now.month,
+      'openingBalance': 0,
+    });
+    list = [created];
   }
+
+  return MonthState(
+    monthId: _pickMonthId(list, now.year, now.month),
+    year: now.year,
+    month: now.month,
+    isLoading: false,
+  );
 });

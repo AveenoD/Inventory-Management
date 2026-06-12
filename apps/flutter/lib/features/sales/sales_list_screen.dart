@@ -211,26 +211,10 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(AppRadii.input),
-              border: Border.all(color: AppColors.border),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-            child: Row(
-              children: [
-                const Icon(AppIcons.search, size: 16, color: AppColors.muted),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: SearchField(
-                    value: _search,
-                    onChanged: _onSearchChanged,
-                    placeholder: 'Search customer, product…',
-                  ),
-                ),
-              ],
-            ),
+          SearchField(
+            value: _search,
+            onChanged: _onSearchChanged,
+            placeholder: 'Search customer, product…',
           ),
           const SizedBox(height: AppSpacing.sm),
           PrimaryButton(

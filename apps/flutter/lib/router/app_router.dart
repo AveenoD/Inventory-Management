@@ -26,13 +26,24 @@ import '../features/transfer/transfer_screen.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
 
-final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(authProvider);
+/// Re-runs [GoRouter] redirect on auth changes without recreating the router instance.
+/// Recreating GoRouter breaks [StatefulShellRoute.indexedStack] and causes a blank shell body.
+class _AuthRouterRefresh extends ChangeNotifier {
+  _AuthRouterRefresh(Ref ref) {
+    ref.listen<AuthState>(authProvider, (_, __) => notifyListeners());
+  }
+}
 
-  return GoRouter(
+final routerProvider = Provider<GoRouter>((ref) {
+  final refresh = _AuthRouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
+
+  final router = GoRouter(
     navigatorKey: _rootKey,
     initialLocation: '/',
+    refreshListenable: refresh,
     redirect: (context, state) {
+      final auth = ref.read(authProvider);
       if (auth.isLoading) return null;
       final loggingIn = state.matchedLocation == '/login';
       if (!auth.isAuthenticated && !loggingIn) return '/login';
@@ -84,6 +95,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
     errorBuilder: (_, __) => const NotFoundScreen(),
   );
+
+  ref.onDispose(router.dispose);
+  return router;
 });
 
 class _TabShell extends StatelessWidget {

@@ -37,4 +37,5 @@ abstract final class AppIcons {
   static const alertTriangle = Icons.warning_amber_outlined;
   static const checkCheck = Icons.done_all;
   static const wifiOff = Icons.wifi_off;
+  static const download = Icons.download_outlined;
 }

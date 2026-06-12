@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
+import '../../core/month/month_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/format.dart';
 import '../../widgets/buttons.dart';
@@ -93,6 +94,7 @@ class _MonthsScreenState extends ConsumerState<MonthsScreen> {
         _creating = false;
       });
       await _loadMonths();
+      ref.invalidate(monthProvider);
     } catch (e) {
       if (!mounted) return;
       setState(() {

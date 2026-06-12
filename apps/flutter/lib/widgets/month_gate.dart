@@ -43,6 +43,9 @@ class MonthGate extends ConsumerWidget {
         ),
       ),
       data: (state) {
+        if (state.isLoading) {
+          return const PageLoader(message: 'Preparing business month…');
+        }
         if (state.monthId == null) {
           return Center(
             child: Padding(
