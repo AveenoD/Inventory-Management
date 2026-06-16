@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { NotificationInbox } from "@/components/ui/notification-inbox";
-import { getToken } from "@/lib/auth";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
 import { PageLoader } from "@/components/ui/page-loader";
 import { FormModal } from "@/components/ui/form-modal";
@@ -45,10 +44,9 @@ export default function TodayPage() {
   const [day1PromptOpen, setDay1PromptOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isPending, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["today", date],
     queryFn: () => api.getToday(date),
-    enabled: !!getToken(),
     retry: 1,
   });
 
@@ -91,7 +89,7 @@ export default function TodayPage() {
     [data?.salesLast7Days],
   );
 
-  const showLoader = isLoading || (isFetching && !data);
+  const showLoader = isPending || isLoading || (isFetching && !data);
 
   if (showLoader) return <PageLoader message="Loading dashboard…" />;
   if (error) {
@@ -110,7 +108,15 @@ export default function TodayPage() {
       </div>
     );
   }
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="card error-card">
+        <h3>Could not load dashboard</h3>
+        <p className="muted">No data returned from the server.</p>
+        <button type="button" onClick={() => refetch()}>Retry</button>
+      </div>
+    );
+  }
 
   const monthLabel = new Date(data.year, data.month - 1).toLocaleString("en-IN", {
     month: "long",

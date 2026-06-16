@@ -3,15 +3,17 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 
 import '../auth/token_store.dart';
-import 'api_config.dart';
 import 'api_error.dart';
+
+/// Production API — same as web and Expo mobile.
+const kApiBaseUrl = 'https://sk-mobile-api.onrender.com';
 
 typedef VoidCallback = void Function();
 
 class ApiService {
   ApiService(this._tokenStore) {
     _dio = Dio(BaseOptions(
-      baseUrl: resolveApiBaseUrl(),
+      baseUrl: kApiBaseUrl,
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},

@@ -462,13 +462,17 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       request<void>(`/api/v1/months/${monthId}/party-transactions/${txId}`, {
         method: "DELETE",
       }),
-    importExcel: async (file: File, year: number, month: number) => {
+    importExcel: async (file: File, year: number, month: number, dryRun = false) => {
       const token = getToken?.();
       const form = new FormData();
       form.append("file", file);
       form.append("year", String(year));
       form.append("month", String(month));
-      const res = await fetch(`${baseUrl}/api/v1/import/excel`, {
+      if (dryRun) form.append("dryRun", "true");
+      const url = dryRun
+        ? `${baseUrl}/api/v1/import/excel?dryRun=true`
+        : `${baseUrl}/api/v1/import/excel`;
+      const res = await fetch(url, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,

@@ -23,9 +23,15 @@ import { PageLoader } from "@/components/ui/page-loader";
 import { formatMoney } from "@/lib/format";
 import { Calendar, Download } from "lucide-react";
 
+type ExportPeriod = "month" | "day";
+
 export default function ReportsPage() {
   const { monthId, year, month } = useMonthContext();
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("month");
+  const [exportDate, setExportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [serviceFilter, setServiceFilter] = useState<
     "ALL" | "SALE" | "RECHARGE" | "TRANSFER" | "REPAIR"
   >("ALL");
@@ -47,25 +53,20 @@ export default function ReportsPage() {
     retry: false,
   });
 
-  function exportCsv() {
-    if (!data) return;
-    const rows = [
-      ["Metric", "Value"],
-      ["Opening Balance", data.openingBalance],
-      ["Total Income", data.totalIncome],
-      ["Total Expense", data.totalExpense],
-      ["Net Profit", data.netProfit],
-      ["Recharge+Transfer", data.serviceWise.rechargeTransferProfit],
-      ["Repair Profit", data.serviceWise.repairProfit],
-      ["Mobile Profit", data.serviceWise.mobileProfit],
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sk-mobile-report-${year}-${month}.csv`;
-    a.click();
+  async function handleExport() {
+    setExportError(null);
+    setExporting(true);
+    try {
+      if (exportPeriod === "day") {
+        await api.downloadExportExcel({ date: exportDate });
+      } else {
+        await api.downloadExportExcel({ year, month });
+      }
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const chartData = useMemo(
@@ -124,12 +125,54 @@ export default function ReportsPage() {
               <option value="TRANSFER">Money Transfer</option>
               <option value="REPAIR">Repairs</option>
             </select>
-            <button type="button" className="secondary" onClick={exportCsv} disabled={!data}>
-              <Download size={16} /> Export
-            </button>
           </div>
         }
       />
+
+      <div className="card" style={{ marginBottom: "1rem" }}>
+        <h3 style={{ marginTop: 0 }}>Export Data</h3>
+        <p className="muted" style={{ marginBottom: "1rem" }}>
+          Download sales, profit, inventory stock balance, and daily breakdown as Excel.
+        </p>
+        <div className="form-stack" style={{ maxWidth: 560 }}>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="exportPeriod"
+                checked={exportPeriod === "month"}
+                onChange={() => setExportPeriod("month")}
+              />
+              Full month ({year}-{String(month).padStart(2, "0")})
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="exportPeriod"
+                checked={exportPeriod === "day"}
+                onChange={() => setExportPeriod("day")}
+              />
+              Single day
+            </label>
+          </div>
+          {exportPeriod === "day" && (
+            <>
+              <label className="stat-label">Export date</label>
+              <input
+                type="date"
+                value={exportDate}
+                onChange={(e) => setExportDate(e.target.value)}
+              />
+            </>
+          )}
+          {exportError && <p className="error">{exportError}</p>}
+          <button type="button" onClick={handleExport} disabled={exporting}>
+            <Download size={16} style={{ marginRight: 6, verticalAlign: "middle" }} />
+            {exporting ? "Preparing Excel…" : "Download Excel"}
+          </button>
+        </div>
+      </div>
+
       {isLoading && <PageLoader message="Loading report…" />}
       {error && <p className="error">{(error as Error).message}</p>}
       {todayLoading && <PageLoader message="Loading activity…" />}

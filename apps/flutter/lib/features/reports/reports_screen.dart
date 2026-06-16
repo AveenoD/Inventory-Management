@@ -54,13 +54,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
+    _loadAll();
   }
 
   Future<void> _loadAll({bool refresh = false}) async {
-    final auth = ref.read(authProvider);
-    if (auth.isLoading) return;
-
     final month = await ref.read(monthProvider.future);
     if (month.monthId == null) {
       if (mounted) {
@@ -197,9 +194,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (prev, next) {
-      if (next.isLoading || !next.isAuthenticated) return;
-      if (prev?.isLoading == true || prev?.isAuthenticated != true) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
+      if (prev?.isAuthenticated != true && next.isAuthenticated && !next.isLoading) {
+        _loadAll();
       }
     });
 
@@ -226,7 +222,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       onRefresh: () => _loadAll(refresh: true),
       child: monthAsync.when(
         loading: () => const PageLoader(message: 'Preparing business month…'),
-        error: (e, _) => _MonthError(message: '$e', onRetry: () => ref.invalidate(monthProvider)),
+        error: (e, _) => _MonthError(
+          message: e is ApiError ? e.message : 'Could not load business month.',
+          onRetry: () => ref.invalidate(monthProvider),
+        ),
         data: (state) {
           if (state.isLoading) {
             return const PageLoader(message: 'Preparing business month…');
@@ -239,12 +238,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             children: [
               _buildToolbar(dashboard != null),
               if (_dashLoading)
-                const PageLoader(message: 'Loading report…')
+                const Center(child: PageLoader(message: 'Loading report…'))
               else if (_dashError != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                  child: Text(_dashError!, style: const TextStyle(color: AppColors.red)),
-                )
+                _ReportError(message: _dashError!, onRetry: () => _loadAll())
               else if (dashboard != null) ...[
                 _buildMetrics(dashboard),
                 _buildBreakdownCard(breakdown),
@@ -454,6 +450,42 @@ class _ActivityRow extends StatelessWidget {
               formatMoney(amount is num ? amount : parseMoney('$amount')),
               style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportError extends StatelessWidget {
+  const _ReportError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Could not load report',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(message, style: const TextStyle(fontSize: 14, color: AppColors.red)),
+          const SizedBox(height: AppSpacing.md),
+          ElevatedButton(
+            onPressed: onRetry,
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
+            child: const Text('Retry', style: TextStyle(fontWeight: FontWeight.w600)),
+          ),
         ],
       ),
     );

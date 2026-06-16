@@ -42,7 +42,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDashboard());
+    _loadDashboard();
   }
 
   @override
@@ -55,22 +55,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   Future<void> _loadDashboard({String? date}) async {
     final queryDate = date ?? _date;
-    final auth = ref.read(authProvider);
-    if (auth.isLoading) {
-      if (mounted && _data == null) {
-        setState(() => _loading = true);
-      }
-      return;
-    }
-    if (!auth.isAuthenticated) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Please login to view dashboard.';
-        });
-      }
-      return;
-    }
 
     if (!mounted) return;
     setState(() {
@@ -173,18 +157,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (prev, next) {
-      if (next.isLoading || !next.isAuthenticated) return;
-      if (prev?.isLoading == true || prev?.isAuthenticated != true) {
+      if (prev?.isAuthenticated != true && next.isAuthenticated && !next.isLoading) {
         _loadDashboard();
       }
     });
 
     final monthState = ref.watch(monthProvider).valueOrNull;
-    final raw = _data ?? <String, dynamic>{};
-    final year = _asInt(raw['year']) ?? monthState?.year ?? DateTime.now().year;
-    final month = _asInt(raw['month']) ?? monthState?.month ?? DateTime.now().month;
+    final data = _data;
+    final year = _asInt(data?['year']) ?? monthState?.year ?? DateTime.now().year;
+    final month = _asInt(data?['month']) ?? monthState?.month ?? DateTime.now().month;
     final monthLbl = monthLabel(year, month);
-    final isRefreshing = _loading && _data != null;
+    final isRefreshing = _loading && data != null;
 
     return Stack(
       fit: StackFit.expand,
@@ -196,8 +179,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           refreshing: isRefreshing,
           onRefresh: _loadDashboard,
           headerAction: const AppHeaderActions(),
-          child: _buildContent(context, raw),
+          child: _buildContent(context),
         ),
+        if (data != null) ...[
         FormModal(
           visible: _editOpeningOpen,
           title: 'Edit Opening Balance',
@@ -216,27 +200,29 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: _buildOpeningModalBody(
             confirmLabel: 'Set Balance',
             cancelLabel: 'Later',
-            hint: _stringNum(raw['suggestedOpeningBalance']).isEmpty
+            hint: _stringNum(data['suggestedOpeningBalance']).isEmpty
                 ? null
-                : 'Previous month closing: ${formatMoney(_asNum(raw['suggestedOpeningBalance']))}',
+                : 'Previous month closing: ${formatMoney(_asNum(data['suggestedOpeningBalance']))}',
             onCancel: _dismissDayOnePrompt,
           ),
         ),
+        ],
       ],
     );
   }
 
-  Widget _buildContent(BuildContext context, Map<String, dynamic> raw) {
+  Widget _buildContent(BuildContext context) {
     if (_loading && _data == null) {
-      return SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.45,
-        child: const PageLoader(message: 'Loading dashboard…'),
+      return const Center(child: PageLoader(message: 'Loading dashboard…'));
+    }
+    if (_data == null) {
+      return _ErrorCard(
+        message: _error ?? 'Could not load dashboard.',
+        onRetry: _loadDashboard,
       );
     }
-    if (_error != null && _data == null) {
-      return _ErrorCard(message: _error!, onRetry: _loadDashboard);
-    }
 
+    final raw = _data!;
     final activity = _asList(raw['recentActivity']);
     final lowStock = _asList(raw['lowStockItems']);
     final sales7Days = _asList(raw['salesLast7Days']);

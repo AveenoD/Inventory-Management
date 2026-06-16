@@ -26,13 +26,18 @@ function Stop-BuildPowerRequest {
 try {
     Push-Location $ProjectDir
 
-    $device = $args -join " "
+    $device = ($args | Where-Object { $_ -and $_ -notmatch '^-' }) -join ' '
     if (-not $device) {
         $adbOut = adb devices 2>&1 | Out-String
-        if ($adbOut -match "(emulator-\d+)") {
-            $device = $Matches[1]
-        } else {
-            $device = ""
+        # Prefer physical / wireless phone over emulator
+        if ($adbOut -match '(\S+)\s+device') {
+            $lines = ($adbOut -split "`n") | Where-Object { $_ -match '\sdevice(\s|$)' -and $_ -notmatch 'List of devices' }
+            $physical = $lines | Where-Object { $_ -notmatch 'emulator-' } | Select-Object -First 1
+            if ($physical -match '^(\S+)') {
+                $device = $Matches[1]
+            } elseif ($lines.Count -gt 0 -and $lines[0] -match '^(\S+)') {
+                $device = $Matches[1]
+            }
         }
     }
 

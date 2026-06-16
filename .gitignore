@@ -6,6 +6,8 @@ dist/
 build/
 build/android/*.apk
 build/android/*.aab
+*.apk
+*.aab
 *.zip
 .next/
 out/

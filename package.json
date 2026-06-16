@@ -11,6 +11,8 @@
     "dev:web": "npm run dev --workspace=@sk-mobile/web",
     "dev:mobile": "npm run start --workspace=@sk-mobile/mobile",
     "dev:flutter": "powershell -ExecutionPolicy Bypass -File scripts/run-flutter.ps1",
+    "dev:flutter:phone": "powershell -ExecutionPolicy Bypass -File scripts/run-flutter-phone.ps1",
+    "install:flutter:phone": "powershell -ExecutionPolicy Bypass -File scripts/install-flutter-phone.ps1",
     "build:flutter:apk": "powershell -ExecutionPolicy Bypass -File scripts/build-flutter-apk.ps1",
     "build:mobile:preview": "npm run build:preview --workspace=@sk-mobile/mobile",
     "build:mobile:production": "npm run build:production --workspace=@sk-mobile/mobile",
