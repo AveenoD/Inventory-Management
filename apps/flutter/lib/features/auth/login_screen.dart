@@ -3,6 +3,7 @@ import '../../core/theme/app_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_error.dart';
+import '../../core/app_version.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../widgets/buttons.dart';
@@ -73,10 +74,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.text),
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  const Text(
-                    'Sign in to your dashboard',
+                  Text(
+                    'Sign in to your dashboard · v$kAppVersionLabel',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.muted, fontSize: 15),
+                    style: const TextStyle(color: AppColors.muted, fontSize: 15),
                   ),
                   const FieldLabel('Email'),
                   AppTextField(

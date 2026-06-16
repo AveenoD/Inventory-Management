@@ -12,6 +12,7 @@ import { entriesRouter, partiesRouter } from "./routes/entries.routes.js";
 import { todayRouter } from "./routes/today.routes.js";
 import { notificationsRouter } from "./routes/notifications.routes.js";
 import { importRouter } from "./routes/import.routes.js";
+import { exportRouter } from "./routes/export.routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestTimeout } from "./middleware/request-timeout.js";
 import { prisma } from "./lib/prisma.js";
@@ -92,6 +93,7 @@ export function createApp() {
   app.use("/api/v1/inventory", inventoryRouter);
   app.use("/api/v1/parties", partiesRouter);
   app.use("/api/v1/import", importRouter);
+  app.use("/api/v1/export", exportRouter);
   app.use("/api/v1/months", monthsRouter);
   app.use("/api/v1/months/:id", dailyRouter);
   app.use("/api/v1/months/:id", entriesRouter);

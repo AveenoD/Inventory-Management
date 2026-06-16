@@ -48,6 +48,50 @@ async function requestJson<T>(path: string, options: RequestInit = {}): Promise<
   return body as T;
 }
 
+async function downloadBlob(path: string, fallbackName: string) {
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  } catch (e) {
+    throw new ApiError(
+      0,
+      e instanceof Error ? e.message : "Network error — is the API running?",
+    );
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401 && typeof window !== "undefined") {
+      clearToken();
+      window.location.replace("/login");
+    }
+    throw new ApiError(res.status, body.error ?? body.message ?? res.statusText);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition");
+  const match = disposition?.match(/filename="?([^"]+)"?/);
+  const filename = match?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadExportBlob(opts: { year?: number; month?: number; date?: string }) {
+  const q = new URLSearchParams();
+  if (opts.date) q.set("date", opts.date);
+  else if (opts.year != null && opts.month != null) {
+    q.set("year", String(opts.year));
+    q.set("month", String(opts.month));
+  }
+  const suffix = opts.date ?? `${opts.year}-${String(opts.month).padStart(2, "0")}`;
+  await downloadBlob(`/api/v1/export/excel?${q.toString()}`, `sk-mobile-${suffix}.xlsx`);
+}
+
 async function withAuth<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
@@ -189,8 +233,14 @@ export const api = {
         method: "DELETE",
       }),
     ),
-  importExcel: (file: File, year: number, month: number) =>
-    client.importExcel(file, year, month),
+  importExcel: (file: File, year: number, month: number, dryRun = false) =>
+    withAuth(() => client.importExcel(file, year, month, dryRun)),
+  previewImportExcel: (file: File, year: number, month: number) =>
+    withAuth(() => client.importExcel(file, year, month, true)),
+  downloadImportTemplate: () =>
+    withAuth(() => downloadBlob("/api/v1/import/template", "sk-mobile-import-template.xlsx")),
+  downloadExportExcel: (opts: { year?: number; month?: number; date?: string }) =>
+    withAuth(() => downloadExportBlob(opts)),
   bulkMoneyTransfer: (monthId: string, entries: unknown[]) =>
     withAuth(() => client.bulkMoneyTransfer(monthId, entries)),
   getMoneyTransfers: (monthId: string, page?: number, limit?: number) =>

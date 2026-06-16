@@ -1,13 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,16 +16,16 @@ import {
   Wrench,
 } from "lucide-react-native";
 import { api } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
 import { getPref, setPref } from "@/lib/prefs";
 import { formatMoney, monthLabel, parseMoneyInput, todayIso } from "@/lib/format";
+import { useQueryRefresh } from "@/lib/use-query-refresh";
+import { ScreenShell } from "@/components/screen-shell";
 import { PageLoader } from "@/components/ui/page-loader";
 import { FormModal, ModalActions } from "@/components/ui/form-modal";
 import { TextField } from "@/components/ui/form-fields";
 import { GradientStatCard } from "@/components/ui/gradient-stat-card";
 import { MetricsGrid, MetricCell } from "@/components/ui/metrics-grid";
 import { SimpleBarChart } from "@/components/ui/simple-bar-chart";
-import { AppHeaderActions } from "@/components/app-header-actions";
 import { DateField } from "@/components/ui/form-fields";
 import { colors, radii, spacing } from "@/theme/tokens";
 
@@ -50,14 +42,12 @@ export default function DashboardScreen() {
   const [openingInput, setOpeningInput] = useState("");
   const [day1PromptOpen, setDay1PromptOpen] = useState(false);
 
-  const { isAuthenticated } = useAuth();
-
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isPending, isFetching, error, refetch } = useQuery({
     queryKey: ["today", date],
     queryFn: () => api.getToday(date),
-    enabled: isAuthenticated,
     retry: 1,
   });
+  const { refreshing, onRefresh } = useQueryRefresh(refetch, isFetching);
 
   const updateOpening = useMutation({
     mutationFn: (amount: number) => {
@@ -98,31 +88,9 @@ export default function DashboardScreen() {
     [data?.salesLast7Days],
   );
 
-  if (isLoading || (isFetching && !data)) {
-    return (
-      <View style={styles.loaderWrap}>
-        <PageLoader message="Loading dashboard…" />
-      </View>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.container}>
-          <View style={styles.errorBox}>
-            <Text style={styles.errorTitle}>Could not load dashboard</Text>
-            <Text style={styles.errorText}>{error instanceof Error ? error.message : "Unknown error"}</Text>
-            <Pressable style={styles.retryBtn} onPress={() => refetch()}>
-              <Text style={styles.retryText}>Retry</Text>
-            </Pressable>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const monthLbl = monthLabel(data.year, data.month);
+  const showLoading = isPending || (isFetching && !data);
+  const monthLbl = data ? monthLabel(data.year, data.month) : undefined;
+  const showError = !showLoading && (error || !data);
 
   function saveOpeningBalance() {
     const amount = parseMoneyInput(openingInput);
@@ -151,26 +119,23 @@ export default function DashboardScreen() {
     }
   }
 
-  return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.shell}>
-        <View style={styles.headerSection}>
-          <View style={styles.topRow}>
-            <View>
-              <Text style={styles.dashTitle}>Dashboard</Text>
-              <Text style={styles.dashSub}>{monthLbl}</Text>
-            </View>
-            <AppHeaderActions />
-          </View>
+  const content = (
+    <>
+      {showLoading ? <PageLoader message="Loading dashboard…" /> : null}
+      {showError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorTitle}>Could not load dashboard</Text>
+          <Text style={styles.errorText}>
+            {error instanceof Error ? error.message : "Could not reach the server. Pull down to retry."}
+          </Text>
+          <Pressable style={styles.retryBtn} onPress={() => refetch()}>
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
         </View>
+      ) : null}
 
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          showsHorizontalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={() => refetch()} />}
-        >
+      {!showLoading && !showError && data ? (
+        <>
         <View style={styles.dateRow}>
           <DateField value={date} onChange={setDate} />
         </View>
@@ -386,9 +351,24 @@ export default function DashboardScreen() {
           <Text style={styles.cardSub}>Last 7 days</Text>
           <SimpleBarChart data={chartData} />
         </View>
-        </ScrollView>
-      </View>
+        </>
+      ) : null}
+    </>
+  );
 
+  return (
+    <>
+      <ScreenShell
+        title="Dashboard"
+        subtitle={monthLbl}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      >
+        {content}
+      </ScreenShell>
+
+      {data ? (
+      <>
       <FormModal
         visible={editOpeningOpen}
         title="Edit Opening Balance"
@@ -437,7 +417,9 @@ export default function DashboardScreen() {
           loading={updateOpening.isPending}
         />
       </FormModal>
-    </SafeAreaView>
+      </>
+      ) : null}
+    </>
   );
 }
 
@@ -468,26 +450,6 @@ function QuickAction({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.pageBg },
-  loaderWrap: { flex: 1, backgroundColor: colors.pageBg },
-  shell: { flex: 1, minHeight: 0 },
-  headerSection: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
-  scroll: { flex: 1, minHeight: 0 },
-  scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl * 3,
-  },
-  container: { padding: spacing.lg, paddingBottom: spacing.xl * 3 },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  dashTitle: { fontSize: 24, fontWeight: "700", color: colors.text },
-  dashSub: { fontSize: 14, color: colors.muted, marginTop: 2 },
   dateRow: { marginBottom: spacing.md },
   sectionLabel: {
     fontSize: 13,
