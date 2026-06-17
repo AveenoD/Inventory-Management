@@ -7,8 +7,8 @@ import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/month/month_provider.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_icons.dart';
 import '../../core/utils/format.dart';
+import '../../widgets/buttons.dart';
 import '../../widgets/filter_picker.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/gradient_stat_card.dart';
@@ -16,6 +16,8 @@ import '../../widgets/metrics_grid.dart';
 import '../../widgets/page_loader.dart';
 import '../../widgets/screen_shell.dart';
 import '../../widgets/simple_bar_chart.dart';
+
+enum _ExportPeriod { month, day }
 
 const _serviceFilters = <({String value, String label})>[
   (value: 'ALL', label: 'All services'),
@@ -42,6 +44,10 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String _date = todayIso();
   String _serviceFilter = 'ALL';
+  _ExportPeriod _exportPeriod = _ExportPeriod.month;
+  String _exportDate = todayIso();
+  bool _exporting = false;
+  String? _exportError;
 
   bool _dashLoading = true;
   bool _todayLoading = true;
@@ -168,27 +174,32 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return date.isEmpty ? '-' : date;
   }
 
-  Future<void> _exportCsv() async {
-    final data = _dashboard;
+  Future<void> _exportExcel() async {
     final month = ref.read(monthProvider).valueOrNull;
-    if (data == null || month == null) return;
+    if (month == null) return;
 
-    final sw = data['serviceWise'];
-    final csv = StringBuffer('Metric,Value\n');
-    csv.writeln('Opening Balance,${data['openingBalance']}');
-    csv.writeln('Total Income,${data['totalIncome']}');
-    csv.writeln('Total Expense,${data['totalExpense']}');
-    csv.writeln('Net Profit,${data['netProfit']}');
-    if (sw is Map) {
-      csv.writeln('Recharge+Transfer,${sw['rechargeTransferProfit']}');
-      csv.writeln('Repair Profit,${sw['repairProfit']}');
-      csv.writeln('Mobile Profit,${sw['mobileProfit']}');
+    setState(() {
+      _exporting = true;
+      _exportError = null;
+    });
+
+    try {
+      final api = ref.read(apiServiceProvider);
+      final String path;
+      final String subject;
+      if (_exportPeriod == _ExportPeriod.day) {
+        path = await api.downloadExportExcel(date: _exportDate);
+        subject = 'SK Mobile report $_exportDate';
+      } else {
+        path = await api.downloadExportExcel(year: month.year, month: month.month);
+        subject = 'SK Mobile report ${month.year}-${month.month.toString().padLeft(2, '0')}';
+      }
+      await Share.shareXFiles([XFile(path)], subject: subject);
+    } catch (e) {
+      setState(() => _exportError = e is ApiError ? e.message : 'Export failed');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
-
-    await Share.share(
-      csv.toString(),
-      subject: 'sk-mobile-report-${month.year}-${month.month}.csv',
-    );
   }
 
   @override
@@ -236,7 +247,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildToolbar(dashboard != null),
+              _buildExportCard(state.year, state.month),
+              _buildToolbar(),
               if (_dashLoading)
                 const Center(child: PageLoader(message: 'Loading report…'))
               else if (_dashError != null)
@@ -254,7 +266,68 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     );
   }
 
-  Widget _buildToolbar(bool canExport) {
+  Widget _buildExportCard(int year, int month) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Export Data', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text)),
+          const SizedBox(height: AppSpacing.sm),
+          const Text(
+            'Download sales, profit, inventory stock balance, and daily breakdown as Excel.',
+            style: TextStyle(color: AppColors.muted, fontSize: 14),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: RadioListTile<_ExportPeriod>(
+                  title: Text('Full month ($year-${month.toString().padLeft(2, '0')})', style: const TextStyle(fontSize: 14)),
+                  value: _ExportPeriod.month,
+                  groupValue: _exportPeriod,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  onChanged: (v) => setState(() => _exportPeriod = v!),
+                ),
+              ),
+              Expanded(
+                child: RadioListTile<_ExportPeriod>(
+                  title: const Text('Single day', style: TextStyle(fontSize: 14)),
+                  value: _ExportPeriod.day,
+                  groupValue: _exportPeriod,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  onChanged: (v) => setState(() => _exportPeriod = v!),
+                ),
+              ),
+            ],
+          ),
+          if (_exportPeriod == _ExportPeriod.day) ...[
+            DateField(value: _exportDate, onChanged: (v) => setState(() => _exportDate = v)),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          if (_exportError != null) ...[
+            Text(_exportError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+          PrimaryButton(
+            label: _exporting ? 'Preparing Excel…' : 'Download Excel',
+            loading: _exporting,
+            onPressed: _exportExcel,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolbar() {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Column(
@@ -270,21 +343,6 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               if (v == null) return;
               setState(() => _serviceFilter = v);
             },
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: canExport ? _exportCsv : null,
-              icon: const Icon(AppIcons.download, size: 16, color: AppColors.accent),
-              label: const Text(
-                'Export CSV',
-                style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600),
-              ),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              ),
-            ),
           ),
         ],
       ),
