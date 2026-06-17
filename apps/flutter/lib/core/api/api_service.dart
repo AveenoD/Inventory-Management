@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 
 import '../auth/token_store.dart';
 import 'api_error.dart';
+import 'file_download.dart';
+import '../../domain/models/import_result.dart';
 
 /// Production API — same as web and Expo mobile.
 const kApiBaseUrl = 'https://sk-mobile-api.onrender.com';
@@ -41,6 +43,59 @@ class ApiService {
   VoidCallback? _onUnauthorized;
 
   void setUnauthorizedHandler(VoidCallback handler) => _onUnauthorized = handler;
+
+  static const _importExportTimeout = Duration(seconds: 120);
+
+  ApiError _dioError(DioException e, String fallback) {
+    final status = e.response?.statusCode ?? 0;
+    final body = e.response?.data;
+    if (body is Map) {
+      final errors = body['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        return ApiError(status, errors.map((x) => '$x').join('\n'));
+      }
+      final msg = body['error'] ?? body['message'];
+      if (msg != null) return ApiError(status, msg.toString());
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout) {
+      return ApiError(status, 'Request timed out. Please try again.');
+    }
+    if (e.type == DioExceptionType.connectionError) {
+      return ApiError(status, 'Network error — check your internet connection.');
+    }
+    return ApiError(status, e.message ?? fallback);
+  }
+
+  String _filenameFromDisposition(String? disposition, String fallback) {
+    if (disposition == null) return fallback;
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+    return match?.group(1) ?? fallback;
+  }
+
+  Future<List<int>> _downloadBytes(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        path,
+        queryParameters: queryParameters,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: _importExportTimeout,
+          connectTimeout: _importExportTimeout,
+        ),
+      );
+      final data = res.data;
+      if (data == null || data.isEmpty) {
+        throw ApiError(res.statusCode ?? 0, 'Empty file received from server');
+      }
+      return data;
+    } on DioException catch (e) {
+      throw _dioError(e, 'Download failed');
+    }
+  }
 
   Future<T> _request<T>(
     String method,
@@ -367,12 +422,13 @@ class ApiService {
   Future<Map<String, dynamic>> registerPushDevice(Map<String, dynamic> data) =>
       _request('POST', '/api/v1/notifications/devices', data: data);
 
-  // ── Import ──────────────────────────────────────────────────────────────────
-  Future<Map<String, dynamic>> importExcel(
+  // ── Import / Export ───────────────────────────────────────────────────────────
+  Future<ImportResult> importExcel(
     File file,
     int year,
-    int month,
-  ) async {
+    int month, {
+    bool dryRun = false,
+  }) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(
         file.path,
@@ -380,19 +436,77 @@ class ApiService {
       ),
       'year': year,
       'month': month,
+      if (dryRun) 'dryRun': 'true',
     });
+    final path = dryRun ? '/api/v1/import/excel?dryRun=true' : '/api/v1/import/excel';
     try {
       final res = await _dio.post<Map<String, dynamic>>(
-        '/api/v1/import/excel',
+        path,
         data: form,
-        options: Options(contentType: 'multipart/form-data'),
+        options: Options(
+          contentType: 'multipart/form-data',
+          receiveTimeout: _importExportTimeout,
+          connectTimeout: _importExportTimeout,
+        ),
       );
-      return res.data ?? {};
+      return ImportResult.fromJson(res.data ?? {});
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       final body = e.response?.data;
-      final message = body is Map ? (body['error'] ?? 'Import failed').toString() : 'Import failed';
-      throw ApiError(status, message);
+      if (body is Map<String, dynamic>) {
+        final result = ImportResult.fromJson(body);
+        if (result.hasErrors) {
+          throw ApiError(status, result.errors.join('\n'));
+        }
+      }
+      throw _dioError(e, 'Import failed');
+    }
+  }
+
+  Future<String> downloadImportTemplate() async {
+    final bytes = await _downloadBytes('/api/v1/import/template');
+    return saveBytesToTempFile(bytes, 'sk-mobile-import-template.xlsx');
+  }
+
+  Future<String> downloadExportExcel({
+    int? year,
+    int? month,
+    String? date,
+  }) async {
+    final query = <String, dynamic>{};
+    String fallback;
+    if (date != null && date.isNotEmpty) {
+      query['date'] = date;
+      fallback = 'sk-mobile-day-$date.xlsx';
+    } else if (year != null && month != null) {
+      query['year'] = year;
+      query['month'] = month;
+      fallback = 'sk-mobile-$year-${month.toString().padLeft(2, '0')}.xlsx';
+    } else {
+      throw ApiError(400, 'Select month or date for export');
+    }
+
+    try {
+      final res = await _dio.get<List<int>>(
+        '/api/v1/export/excel',
+        queryParameters: query,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: _importExportTimeout,
+          connectTimeout: _importExportTimeout,
+        ),
+      );
+      final data = res.data;
+      if (data == null || data.isEmpty) {
+        throw ApiError(res.statusCode ?? 0, 'Empty export file received');
+      }
+      final filename = _filenameFromDisposition(
+        res.headers.value('content-disposition'),
+        fallback,
+      );
+      return saveBytesToTempFile(data, filename);
+    } on DioException catch (e) {
+      throw _dioError(e, 'Export failed');
     }
   }
 }
