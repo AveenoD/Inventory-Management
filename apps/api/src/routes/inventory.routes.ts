@@ -31,6 +31,7 @@ import {
   notifyRepairPickup,
   notifyRepairReceived,
 } from "../services/notification.service.js";
+import { allocateInvoiceNo, getSaleInvoice } from "../services/invoice.service.js";
 
 export const inventoryRouter = Router();
 inventoryRouter.use(requireAuth);
@@ -41,12 +42,14 @@ function parseDate(s: string) {
 
 function mapSaleDto(s: {
   id: string;
+  invoiceNo: string | null;
   date: Date;
   customerName: string | null;
   paymentMethod: string;
   discount: { toString(): string };
   total: { toString(): string };
   totalCost: { toString(): string };
+  warrantyNote: string | null;
   lines: Array<{
     id: string;
     productId: string;
@@ -59,6 +62,7 @@ function mapSaleDto(s: {
   const subtotal = s.lines.reduce((sum, l) => sum.plus(d(l.lineTotal)), d(0));
   return {
     id: s.id,
+    invoiceNo: s.invoiceNo,
     date: s.date.toISOString().slice(0, 10),
     customerName: s.customerName,
     paymentMethod: s.paymentMethod,
@@ -66,6 +70,7 @@ function mapSaleDto(s: {
     discount: fmt(d(s.discount)),
     total: fmt(d(s.total)),
     totalCost: fmt(d(s.totalCost)),
+    warrantyNote: s.warrantyNote,
     lines: s.lines.map((l) => ({
       id: l.id,
       productId: l.productId,
@@ -578,6 +583,35 @@ inventoryRouter.get("/sales", async (req, res, next) => {
   }
 });
 
+inventoryRouter.get("/sales/:saleId/invoice", async (req, res, next) => {
+  try {
+    const invoice = await getSaleInvoice(req.user!.userId, req.params.saleId);
+    if (!invoice) {
+      res.status(404).json({ error: "Sale not found" });
+      return;
+    }
+    res.json(invoice);
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.get("/sales/:saleId", async (req, res, next) => {
+  try {
+    const sale = await prisma.sale.findFirst({
+      where: { id: req.params.saleId, userId: req.user!.userId },
+      include: { lines: { include: { product: true } } },
+    });
+    if (!sale) {
+      res.status(404).json({ error: "Sale not found" });
+      return;
+    }
+    res.json(mapSaleDto(sale));
+  } catch (e) {
+    next(e);
+  }
+});
+
 inventoryRouter.post("/sales", async (req, res, next) => {
   try {
     const body = createSaleSchema.parse(req.body);
@@ -622,17 +656,20 @@ inventoryRouter.post("/sales", async (req, res, next) => {
         throw new Error("Discount cannot exceed subtotal");
       }
       const total = subtotal.minus(discount);
+      const invoiceNo = await allocateInvoiceNo(tx, req.user!.userId);
 
       const sale = await tx.sale.create({
         data: {
           userId: req.user!.userId,
           businessMonthId: month.id,
           date,
+          invoiceNo,
           customerName: body.customerName,
           paymentMethod: body.paymentMethod,
           discount: fmt(discount),
           total: fmt(total),
           totalCost: fmt(totalCost),
+          warrantyNote: body.warrantyNote?.trim() || null,
         },
       });
 

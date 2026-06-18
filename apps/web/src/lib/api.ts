@@ -158,6 +158,11 @@ export const api = {
     withAuth(() => client.getSales(page, date)),
   createSale: (data: Parameters<typeof client.createSale>[0]) =>
     withAuth(() => client.createSale(data)),
+  getSale: (saleId: string) => withAuth(() => client.getSale(saleId)),
+  getSaleInvoice: (saleId: string) => withAuth(() => client.getSaleInvoice(saleId)),
+  getInvoiceSettings: () => withAuth(() => client.getInvoiceSettings()),
+  updateInvoiceSettings: (data: Parameters<typeof client.updateInvoiceSettings>[0]) =>
+    withAuth(() => client.updateInvoiceSettings(data)),
   deleteSale: (saleId: string) =>
     withAuth(() =>
       requestJson<void>(`/api/v1/inventory/sales/${saleId}`, { method: "DELETE" }),
@@ -233,6 +238,17 @@ export const api = {
         method: "DELETE",
       }),
     ),
+  getPurchases: (
+    page?: number,
+    opts?: { date?: string; partyId?: string; limit?: number },
+  ) => withAuth(() => client.getPurchases(page, opts)),
+  getPurchase: (id: string) => withAuth(() => client.getPurchase(id)),
+  createPurchase: (data: Parameters<typeof client.createPurchase>[0]) =>
+    withAuth(() => client.createPurchase(data)),
+  addPurchasePayment: (
+    id: string,
+    data: Parameters<typeof client.addPurchasePayment>[1],
+  ) => withAuth(() => client.addPurchasePayment(id, data)),
   importExcel: (file: File, year: number, month: number, dryRun = false) =>
     withAuth(() => client.importExcel(file, year, month, dryRun)),
   previewImportExcel: (file: File, year: number, month: number) =>

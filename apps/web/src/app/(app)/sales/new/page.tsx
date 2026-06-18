@@ -56,6 +56,7 @@ export default function NewSalePage() {
   const [cartError, setCartError] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
   const [discount, setDiscount] = useState("");
+  const [warrantyNote, setWarrantyNote] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
@@ -94,13 +95,14 @@ export default function NewSalePage() {
         customerName: customerName || undefined,
         paymentMethod,
         discount: discountValue,
+        warrantyNote: warrantyNote.trim() || undefined,
         lines: cart.map((c) => ({ productId: c.productId, quantity: c.qty, unitPrice: c.unitPrice })),
       }),
-    onSuccess: () => {
+    onSuccess: (sale) => {
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["today"] });
-      router.push("/sales");
+      router.push(`/sales/${sale.id}/invoice`);
     },
   });
 
@@ -408,6 +410,16 @@ export default function NewSalePage() {
                     <div className="pos-change">{formatMoney(String(change))}</div>
                   </div>
                 </div>
+              </div>
+
+              <div className="pos-warranty">
+                <div className="muted pos-field-label">Warranty / guarantee (optional)</div>
+                <textarea
+                  rows={3}
+                  value={warrantyNote}
+                  onChange={(e) => setWarrantyNote(e.target.value)}
+                  placeholder="Leave blank to use default from Settings → Invoice"
+                />
               </div>
 
               <div className="pos-actions">

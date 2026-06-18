@@ -226,6 +226,9 @@ export default function TodayPage() {
           <Link href="/sales/new" className="dash-topbar-action blue">
             + Add Sale
           </Link>
+          <Link href="/parties/purchase/new" className="dash-topbar-action green">
+            + Purchase
+          </Link>
           <Link href="/repair?intake=1" className="dash-topbar-action orange">
             + Repair
           </Link>
@@ -365,6 +368,7 @@ export default function TodayPage() {
           </div>
           <div className="dash-actions">
             <ActionLink href="/sales/new" title="+ New Sale" subtitle="Create invoice" variant="blue" />
+            <ActionLink href="/parties/purchase/new" title="+ Purchase" subtitle="Stock from supplier" variant="teal" />
             <ActionLink href="/recharge" title="+ Recharge" subtitle="Add recharge" variant="green" />
             <ActionLink href="/repair?intake=1" title="+ Repair" subtitle="Add repair job" variant="orange" />
             <ActionLink href="/inventory/new" title="+ Add Product" subtitle="New product" variant="purple" />

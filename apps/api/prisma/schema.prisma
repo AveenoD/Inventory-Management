@@ -52,11 +52,13 @@ model User {
   categories     Category[]
   products       Product[]
   sales          Sale[]
+  purchases      Purchase[]
   parties        Party[]
   coverTypes     CoverType[]
   phoneModels    PhoneModel[]
-  notifications  Notification[]
-  pushDevices    PushDevice[]
+  notifications    Notification[]
+  pushDevices      PushDevice[]
+  invoiceSettings  InvoiceSettings?
 }
 
 model BusinessMonth {
@@ -81,6 +83,7 @@ model BusinessMonth {
   bankBalanceDays      BankBalanceDay[]
   withdrawals          Withdrawal[]
   sales                Sale[]
+  purchases            Purchase[]
   rechargeEntries      RechargeEntry[]
   transferEntries      TransferEntry[]
   repairJobs           RepairJob[]
@@ -335,6 +338,7 @@ model Product {
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
   saleLines      SaleLine[]
+  purchaseLines  PurchaseLine[]
   repairJobParts RepairJobPart[]
 
   @@index([userId])
@@ -352,12 +356,28 @@ model StockMovement {
   quantity  Int
   unitCost  Decimal?          @db.Decimal(14, 2)
   note      String?
-  saleId    String?
-  sale      Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
-  createdAt DateTime          @default(now())
+  saleId      String?
+  sale        Sale?             @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchaseId  String?
+  purchase    Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
 
   @@index([productId, createdAt])
   @@index([saleId])
+  @@index([purchaseId])
+}
+
+model InvoiceSettings {
+  id             String @id @default(cuid())
+  userId         String @unique
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address        String?
+  phone          String?
+  logoDataUrl    String? @db.Text
+  warrantyText   String? @db.Text
+  nextInvoiceNo  Int    @default(1)
+
+  @@index([userId])
 }
 
 model Sale {
@@ -367,17 +387,61 @@ model Sale {
   businessMonthId String?
   businessMonth   BusinessMonth?  @relation(fields: [businessMonthId], references: [id], onDelete: SetNull)
   date            DateTime        @db.Date
+  invoiceNo       String?
   customerName    String?
   paymentMethod   String          @default("CASH")
   discount        Decimal         @default(0) @db.Decimal(14, 2)
   total           Decimal         @default(0) @db.Decimal(14, 2)
   totalCost       Decimal         @default(0) @db.Decimal(14, 2)
+  warrantyNote    String?         @db.Text
   createdAt       DateTime        @default(now())
   lines           SaleLine[]
   stockMovements  StockMovement[]
 
   @@index([userId, date])
   @@index([businessMonthId, date])
+  @@index([userId, invoiceNo])
+}
+
+model Purchase {
+  id               String            @id @default(cuid())
+  userId           String
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessMonthId  String
+  businessMonth    BusinessMonth     @relation(fields: [businessMonthId], references: [id], onDelete: Cascade)
+  partyId          String
+  party            Party             @relation(fields: [partyId], references: [id], onDelete: Restrict)
+  date             DateTime          @db.Date
+  invoiceNo        String?
+  note             String?
+  subtotal         Decimal           @default(0) @db.Decimal(14, 2)
+  discount         Decimal           @default(0) @db.Decimal(14, 2)
+  total            Decimal           @default(0) @db.Decimal(14, 2)
+  paidAmount       Decimal           @default(0) @db.Decimal(14, 2)
+  paymentMethod    String            @default("CASH")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  lines            PurchaseLine[]
+  stockMovements   StockMovement[]
+  partyTransaction PartyTransaction?
+
+  @@index([userId, date])
+  @@index([businessMonthId, date])
+  @@index([partyId])
+}
+
+model PurchaseLine {
+  id         String   @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Int
+  unitCost   Decimal  @db.Decimal(14, 2)
+  lineTotal  Decimal  @db.Decimal(14, 2)
+
+  @@index([purchaseId])
+  @@index([productId])
 }
 
 model SaleLine {
@@ -477,6 +541,7 @@ model Party {
   phone        String?
   createdAt    DateTime           @default(now())
   transactions PartyTransaction[]
+  purchases    Purchase[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -492,6 +557,8 @@ model PartyTransaction {
   materialIn      Decimal       @default(0) @db.Decimal(14, 2)
   paymentOut      Decimal       @default(0) @db.Decimal(14, 2)
   note            String?
+  purchaseId      String?       @unique
+  purchase        Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   createdAt       DateTime      @default(now())
 
   @@index([businessMonthId, date])

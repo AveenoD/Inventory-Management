@@ -38,4 +38,7 @@ abstract final class AppIcons {
   static const checkCheck = Icons.done_all;
   static const wifiOff = Icons.wifi_off;
   static const download = Icons.download_outlined;
+  static const printer = Icons.print_outlined;
+  static const share = Icons.share_outlined;
+  static const fileText = Icons.description_outlined;
 }

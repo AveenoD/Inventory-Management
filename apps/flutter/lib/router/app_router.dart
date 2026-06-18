@@ -16,11 +16,14 @@ import '../features/not_found/not_found_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/parties/parties_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/purchases/new_purchase_screen.dart';
+import '../features/purchases/purchases_list_screen.dart';
 import '../features/recharge/recharge_screen.dart';
 import '../features/repair/repair_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/sales/new_sale_screen.dart';
 import '../features/sales/sales_list_screen.dart';
+import '../features/invoice/sale_invoice_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/transfer/transfer_screen.dart';
 
@@ -79,6 +82,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(path: '/sales/new', builder: (_, __) => const NewSaleScreen()),
+      GoRoute(
+        path: '/sales/:id/invoice',
+        builder: (_, state) => SaleInvoiceScreen(saleId: state.pathParameters['id']!),
+      ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
       GoRoute(path: '/months', builder: (_, __) => const MonthsScreen()),
@@ -90,6 +97,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/expenses', builder: (_, __) => const ExpensesScreen()),
       GoRoute(path: '/parties', builder: (_, __) => const PartiesScreen()),
+      GoRoute(path: '/purchases', builder: (_, __) => const PurchasesListScreen()),
+      GoRoute(path: '/purchases/new', builder: (_, __) => const NewPurchaseScreen()),
       GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
     ],

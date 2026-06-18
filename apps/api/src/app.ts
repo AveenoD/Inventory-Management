@@ -13,6 +13,8 @@ import { todayRouter } from "./routes/today.routes.js";
 import { notificationsRouter } from "./routes/notifications.routes.js";
 import { importRouter } from "./routes/import.routes.js";
 import { exportRouter } from "./routes/export.routes.js";
+import { purchaseRouter } from "./routes/purchase.routes.js";
+import { settingsRouter } from "./routes/settings.routes.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { requestTimeout } from "./middleware/request-timeout.js";
 import { prisma } from "./lib/prisma.js";
@@ -91,6 +93,8 @@ export function createApp() {
   app.use("/api/v1/today", todayRouter);
   app.use("/api/v1/notifications", notificationsRouter);
   app.use("/api/v1/inventory", inventoryRouter);
+  app.use("/api/v1/purchases", purchaseRouter);
+  app.use("/api/v1/settings", settingsRouter);
   app.use("/api/v1/parties", partiesRouter);
   app.use("/api/v1/import", importRouter);
   app.use("/api/v1/export", exportRouter);

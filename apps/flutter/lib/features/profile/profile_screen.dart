@@ -13,6 +13,7 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     const menu = [
+      _ProfileMenuItem(label: 'Purchases', route: '/purchases', icon: AppIcons.shoppingBag),
       _ProfileMenuItem(label: 'Inventory', route: '/inventory', icon: AppIcons.package),
       _ProfileMenuItem(label: 'Reports', route: '/reports', icon: AppIcons.receipt),
       _ProfileMenuItem(label: 'Expenses', route: '/expenses', icon: AppIcons.receipt),

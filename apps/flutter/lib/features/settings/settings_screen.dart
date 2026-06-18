@@ -10,6 +10,7 @@ import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/format.dart';
 import '../../domain/models/import_result.dart';
+import '../../features/settings/invoice_settings_card.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/screen_shell.dart';
@@ -169,6 +170,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          const InvoiceSettingsCard(),
+          const SizedBox(height: AppSpacing.md),
           _SettingsCard(
             title: 'Export Excel',
             child: Column(
