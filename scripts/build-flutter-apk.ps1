@@ -40,8 +40,13 @@ try {
     flutter pub get
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $dartDefine = ""
+    if ($env:API_URL) {
+        $dartDefine = "--dart-define=API_URL=$($env:API_URL)"
+        Write-Host "Using API_URL=$($env:API_URL)"
+    }
     Write-Host "Building release APK from $ProjectDir ..."
-    flutter build apk --release
+    flutter build apk --release $dartDefine
     $sw.Stop()
     Write-Host "Gradle/Flutter build took $([math]::Round($sw.Elapsed.TotalMinutes, 1)) min"
     Pop-Location

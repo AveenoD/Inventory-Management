@@ -80,24 +80,74 @@ class _PurchasesListScreenState extends ConsumerState<PurchasesListScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DateField(value: _dateFilter, onChanged: (v) {
-            setState(() => _dateFilter = v);
-            _load();
-          }),
-          const SizedBox(height: AppSpacing.md),
-          PrimaryButton(
-            label: 'New purchase',
-            onPressed: () => context.push('/purchases/new'),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(AppRadii.card),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DateField(value: _dateFilter, onChanged: (v) {
+                  setState(() => _dateFilter = v);
+                  _load();
+                }),
+                const SizedBox(height: AppSpacing.md),
+                PrimaryButton(
+                  label: 'New purchase',
+                  onPressed: () => context.push('/purchases/new'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.md),
           if (_loading)
             const PageLoader(message: 'Loading purchases…')
           else if (_error != null)
-            Text(_error!, style: const TextStyle(color: AppColors.red))
+            _ErrorCard(message: _error!, onRetry: _load)
           else if (_purchases.isEmpty)
-            const Text('No purchases for this date', style: TextStyle(color: AppColors.muted))
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(AppRadii.card),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Text('No purchases for this date', style: TextStyle(color: AppColors.muted)),
+            )
           else
             ..._purchases.map((p) => _PurchaseCard(purchase: p)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorCard extends StatelessWidget {
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Could not load purchases', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.red)),
+          const SizedBox(height: AppSpacing.sm),
+          Text(message, style: const TextStyle(color: AppColors.red, fontSize: 14, height: 1.45)),
+          const SizedBox(height: AppSpacing.md),
+          SecondaryButton(label: 'Retry', onPressed: onRetry),
         ],
       ),
     );

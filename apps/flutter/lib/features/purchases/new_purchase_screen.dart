@@ -7,9 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_icons.dart';
 import '../../core/utils/format.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
+import '../../widgets/filter_picker.dart';
 import '../../widgets/page_loader.dart';
 import '../../widgets/screen_shell.dart';
 
@@ -21,10 +23,10 @@ class _PurchaseCartLine {
     required this.displayName,
     required this.qty,
     required this.unitCost,
-  }) : phoneModelId = null,
-       coverTypeId = null,
-       variantName = null,
-       sellPrice = null;
+  })  : phoneModelId = null,
+        coverTypeId = null,
+        variantName = null,
+        sellPrice = null;
 
   _PurchaseCartLine.cover({
     required this.phoneModelId,
@@ -42,8 +44,10 @@ class _PurchaseCartLine {
   final String? variantName;
   final String displayName;
   int qty;
-  final double unitCost;
+  double unitCost;
   final double? sellPrice;
+
+  double get lineTotal => qty * unitCost;
 }
 
 class NewPurchaseScreen extends ConsumerStatefulWidget {
@@ -54,15 +58,15 @@ class NewPurchaseScreen extends ConsumerStatefulWidget {
 }
 
 class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
-  _LineMode _mode = _LineMode.cover;
+  _LineMode _mode = _LineMode.product;
   String _date = todayIso();
   String _payment = 'CASH';
   String? _partyId;
   String? _phoneModelId;
   String? _coverTypeId;
+  String? _selectedProductId;
 
   final _invoice = TextEditingController();
-  final _note = TextEditingController();
   final _variant = TextEditingController();
   final _lineQty = TextEditingController(text: '1');
   final _lineCost = TextEditingController();
@@ -89,13 +93,16 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
   void initState() {
     super.initState();
     _bootstrap();
+    _discount.addListener(_onTotalsChanged);
+    _paid.addListener(_onTotalsChanged);
+    _lineQty.addListener(() => setState(() {}));
+    _lineCost.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _invoice.dispose();
-    _note.dispose();
     _variant.dispose();
     _lineQty.dispose();
     _lineCost.dispose();
@@ -105,13 +112,26 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
     super.dispose();
   }
 
-  double get _subtotal => _cart.fold(0.0, (sum, c) => sum + c.qty * c.unitCost);
+  void _onTotalsChanged() => setState(() {});
+
+  double get _subtotal => _cart.fold(0.0, (sum, c) => sum + c.lineTotal);
 
   double get _discountValue => parseMoney(_discount.text);
 
   double get _total => (_subtotal - _discountValue).clamp(0, double.infinity);
 
-  double get _balance => (_total - parseMoney(_paid.text)).clamp(0, double.infinity);
+  double get _paidValue => parseMoney(_paid.text);
+
+  double get _balance => (_total - _paidValue).clamp(0, double.infinity);
+
+  int get _lineQtyValue {
+    final n = int.tryParse(_lineQty.text.trim());
+    return n == null || n < 1 ? 1 : n;
+  }
+
+  double get _lineCostValue => parseMoney(_lineCost.text);
+
+  double get _linePreviewTotal => _lineQtyValue * _lineCostValue;
 
   Future<void> _bootstrap() async {
     try {
@@ -143,8 +163,7 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
     if (!mounted) return;
     setState(() {
       _coverTypes = (res['data'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
-      if (_coverTypeId != null &&
-          !_coverTypes.any((t) => t['id'] == _coverTypeId)) {
+      if (_coverTypeId != null && !_coverTypes.any((t) => t['id'] == _coverTypeId)) {
         _coverTypeId = null;
       }
     });
@@ -171,6 +190,20 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
     });
   }
 
+  void _selectProduct(Map<String, dynamic> p) {
+    setState(() {
+      _selectedProductId = '${p['id']}';
+      _lineCost.text = '${parseMoney('${p['buyPrice']}')}';
+      _cartError = null;
+    });
+  }
+
+  void _syncPaidToTotalIfEmpty() {
+    if (_paid.text.trim().isEmpty && _total > 0) {
+      _paid.text = _total.toStringAsFixed(2);
+    }
+  }
+
   void _addCoverLine() {
     if (_phoneModelId == null || _coverTypeId == null) {
       setState(() => _cartError = 'Select phone model and cover category.');
@@ -181,10 +214,10 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
       setState(() => _cartError = 'Enter design / variant name.');
       return;
     }
-    final qty = int.tryParse(_lineQty.text) ?? 0;
-    final cost = parseMoney(_lineCost.text);
-    if (qty <= 0 || cost < 0) {
-      setState(() => _cartError = 'Enter valid quantity and buy rate.');
+    final qty = _lineQtyValue;
+    final cost = _lineCostValue;
+    if (cost < 0) {
+      setState(() => _cartError = 'Enter valid buy rate.');
       return;
     }
     final modelName = _phoneModels.firstWhere((m) => m['id'] == _phoneModelId)['name'];
@@ -208,15 +241,26 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
       _lineCost.clear();
       _lineSell.clear();
     });
+    _syncPaidToTotalIfEmpty();
   }
 
-  void _addProductLine(Map<String, dynamic> p) {
-    final qty = int.tryParse(_lineQty.text) ?? 1;
-    final cost = _lineCost.text.trim().isEmpty
-        ? parseMoney('${p['buyPrice']}')
-        : parseMoney(_lineCost.text);
-    if (qty <= 0) {
-      setState(() => _cartError = 'Enter valid quantity.');
+  void _addProductLine() {
+    if (_selectedProductId == null) {
+      setState(() => _cartError = 'Select a product first, then set quantity and tap Add to bill.');
+      return;
+    }
+    final p = _products.cast<Map<String, dynamic>?>().firstWhere(
+          (x) => x?['id'] == _selectedProductId,
+          orElse: () => null,
+        );
+    if (p == null) {
+      setState(() => _cartError = 'Selected product not found. Search again.');
+      return;
+    }
+    final qty = _lineQtyValue;
+    final cost = _lineCost.text.trim().isEmpty ? parseMoney('${p['buyPrice']}') : _lineCostValue;
+    if (cost < 0) {
+      setState(() => _cartError = 'Enter valid buy rate.');
       return;
     }
     final id = '${p['id']}';
@@ -224,7 +268,8 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
       _cartError = null;
       final existing = _cart.where((c) => c.productId == id).toList();
       if (existing.isNotEmpty) {
-        existing.first.qty += qty;
+        existing.first.qty = qty;
+        existing.first.unitCost = cost;
       } else {
         _cart.add(
           _PurchaseCartLine.product(
@@ -236,8 +281,23 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
         );
       }
       _lineQty.text = '1';
+      _selectedProductId = null;
       _lineCost.clear();
     });
+    _syncPaidToTotalIfEmpty();
+  }
+
+  void _adjustCartQty(_PurchaseCartLine line, int delta) {
+    setState(() {
+      _cartError = null;
+      final next = line.qty + delta;
+      if (next <= 0) {
+        _cart.remove(line);
+      } else {
+        line.qty = next;
+      }
+    });
+    _syncPaidToTotalIfEmpty();
   }
 
   Future<void> _save() async {
@@ -253,8 +313,7 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
       setState(() => _submitError = 'Discount cannot exceed subtotal.');
       return;
     }
-    final paid = parseMoney(_paid.text);
-    if (paid > _total) {
+    if (_paidValue > _total) {
       setState(() => _submitError = 'Paid amount cannot exceed total.');
       return;
     }
@@ -269,9 +328,8 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
         'partyId': _partyId,
         'date': _date,
         'invoiceNo': _invoice.text.trim().isEmpty ? null : _invoice.text.trim(),
-        'note': _note.text.trim().isEmpty ? null : _note.text.trim(),
         'discount': _discountValue,
-        'paidAmount': paid,
+        'paidAmount': _paidValue,
         'paymentMethod': _payment,
         'lines': _cart.map((c) {
           if (c.productId != null) {
@@ -310,6 +368,7 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
         title: 'New purchase',
         subtitle: 'Stock in from supplier',
         showBack: true,
+        hideHeaderActions: true,
         child: PageLoader(message: 'Loading…'),
       );
     }
@@ -318,140 +377,51 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
       title: 'New purchase',
       subtitle: 'Stock in from supplier',
       showBack: true,
+      hideHeaderActions: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text(_error!, style: const TextStyle(color: AppColors.red)),
-            ),
+          if (_error != null) _errorBanner(_error!),
           if (_parties.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text(
-                'No suppliers yet — add one in Parties first.',
-                style: TextStyle(color: AppColors.amber, fontSize: 14),
-              ),
-            ),
-          DropdownButtonFormField<String>(
-            value: _partyId,
-            decoration: const InputDecoration(labelText: 'Supplier'),
-            items: _parties
-                .map((p) => DropdownMenuItem(value: p['id'] as String, child: Text('${p['name']}')))
-                .toList(),
-            onChanged: (v) => setState(() => _partyId = v),
-          ),
-          DateField(value: _date, onChanged: (v) => setState(() => _date = v)),
-          const FieldLabel('Invoice # (optional)'),
-          AppTextField(controller: _invoice),
-          const SizedBox(height: AppSpacing.md),
-          Row(
-            children: [
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Cover'),
-                  selected: _mode == _LineMode.cover,
-                  onSelected: (_) => setState(() => _mode = _LineMode.cover),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: ChoiceChip(
-                  label: const Text('Other product'),
-                  selected: _mode == _LineMode.product,
-                  onSelected: (_) => setState(() => _mode = _LineMode.product),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (_mode == _LineMode.cover) ...[
-            DropdownButtonFormField<String>(
-              value: _phoneModelId,
-              decoration: const InputDecoration(labelText: 'Phone model'),
-              items: _phoneModels
-                  .map((m) => DropdownMenuItem(value: m['id'] as String, child: Text('${m['name']}')))
-                  .toList(),
-              onChanged: (v) {
-                setState(() {
-                  _phoneModelId = v;
-                  _coverTypeId = null;
-                });
-                _loadCoverTypes();
-              },
-            ),
-            DropdownButtonFormField<String>(
-              value: _coverTypeId,
-              decoration: const InputDecoration(labelText: 'Cover category'),
-              items: _coverTypes
-                  .map((t) => DropdownMenuItem(value: t['id'] as String, child: Text('${t['name']}')))
-                  .toList(),
-              onChanged: _phoneModelId == null ? null : (v) => setState(() => _coverTypeId = v),
-            ),
-            const FieldLabel('Design / variant'),
-            AppTextField(controller: _variant),
-            const FieldLabel('Sell price (optional)'),
-            AppTextField(controller: _lineSell, keyboardType: TextInputType.number),
-          ] else ...[
-            SearchField(
-              value: _search,
-              onChanged: (v) {
-                setState(() => _search = v);
-                _onSearchChanged(v);
-              },
-              placeholder: 'Search products…',
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            ..._products.take(8).map(
-                  (p) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('${p['name']}'),
-                    subtitle: Text('Stock ${p['stockQty']} · Buy ${p['buyPrice']}'),
-                    trailing: TextButton(onPressed: () => _addProductLine(p), child: const Text('Add')),
+            _infoBanner('No suppliers yet — add one in Parties first.'),
+          _sectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const FieldLabel('Supplier'),
+                if (_parties.isEmpty)
+                  const Text('No parties available', style: TextStyle(color: AppColors.muted))
+                else
+                  FilterPicker<String?>(
+                    value: _partyId,
+                    items: [null, ..._parties.map((p) => p['id'] as String)],
+                    labelBuilder: (id) {
+                      if (id == null) return 'Select supplier';
+                      final party = _parties.firstWhere((p) => p['id'] == id);
+                      return '${party['name']}';
+                    },
+                    onChanged: (v) => setState(() => _partyId = v),
                   ),
-                ),
-          ],
-          const FieldLabel('Quantity'),
-          AppTextField(controller: _lineQty, keyboardType: TextInputType.number),
-          const FieldLabel('Buy rate (per piece)'),
-          AppTextField(controller: _lineCost, keyboardType: TextInputType.number),
-          if (_mode == _LineMode.cover) ...[
-            const SizedBox(height: AppSpacing.sm),
-            SecondaryButton(label: 'Add cover to bill', onPressed: _addCoverLine),
-          ],
-          if (_cartError != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(_cartError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
-          ],
-          const SizedBox(height: AppSpacing.md),
-          _buildCart(),
-          const SizedBox(height: AppSpacing.md),
-          const FieldLabel('Discount'),
-          AppTextField(controller: _discount, keyboardType: TextInputType.number),
-          const FieldLabel('Paid now'),
-          AppTextField(controller: _paid, keyboardType: TextInputType.number),
-          DropdownButtonFormField<String>(
-            value: _payment,
-            decoration: const InputDecoration(labelText: 'Payment method'),
-            items: ['CASH', 'UPI', 'CARD', 'BANK']
-                .map((m) => DropdownMenuItem(value: m, child: Text(m)))
-                .toList(),
-            onChanged: (v) => setState(() => _payment = v ?? 'CASH'),
+                const SizedBox(height: AppSpacing.md),
+                DateField(value: _date, onChanged: (v) => setState(() => _date = v)),
+                const FieldLabel('Invoice # (optional)'),
+                AppTextField(controller: _invoice),
+              ],
+            ),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          _summaryRow('Subtotal', formatMoney(_subtotal)),
-          _summaryRow('Total', formatMoney(_total)),
-          _summaryRow('Balance due', formatMoney(_balance)),
-          if (_submitError != null) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Text(_submitError!, style: const TextStyle(color: AppColors.red)),
-          ],
+          const SizedBox(height: AppSpacing.md),
+          _buildModeTabs(),
+          const SizedBox(height: AppSpacing.md),
+          _sectionCard(child: _mode == _LineMode.cover ? _buildCoverForm() : _buildProductForm()),
+          const SizedBox(height: AppSpacing.md),
+          _buildCartCard(),
+          const SizedBox(height: AppSpacing.md),
+          _buildSummaryCard(),
           const SizedBox(height: AppSpacing.md),
           PrimaryButton(
             label: _saving ? 'Saving…' : 'Save purchase',
             loading: _saving,
-            disabled: _cart.isEmpty,
+            disabled: _cart.isEmpty || _partyId == null,
             onPressed: _save,
           ),
         ],
@@ -459,52 +429,380 @@ class _NewPurchaseScreenState extends ConsumerState<NewPurchaseScreen> {
     );
   }
 
-  Widget _buildCart() {
-    if (_cart.isEmpty) {
-      return const Text('No items yet', style: TextStyle(color: AppColors.muted));
-    }
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(AppRadii.card),
-        border: Border.all(color: AppColors.border),
+  Widget _buildModeTabs() {
+    return Row(
+      children: [
+        Expanded(child: _modeChip('Other product', _LineMode.product)),
+        const SizedBox(width: AppSpacing.sm),
+        Expanded(child: _modeChip('Cover', _LineMode.cover)),
+      ],
+    );
+  }
+
+  Widget _modeChip(String label, _LineMode mode) {
+    final selected = _mode == mode;
+    return Material(
+      color: selected ? AppColors.accentLight : AppColors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        side: BorderSide(color: selected ? AppColors.accent : AppColors.border),
       ),
-      child: Column(
-        children: [
-          for (var i = 0; i < _cart.length; i++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
-              child: Row(
+      child: InkWell(
+        onTap: () => setState(() => _mode = mode),
+        borderRadius: BorderRadius.circular(AppRadii.pill),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: selected ? AppColors.accent : AppColors.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCoverForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const FieldLabel('Phone model'),
+        FilterPicker<String?>(
+          value: _phoneModelId,
+          items: [null, ..._phoneModels.map((m) => m['id'] as String)],
+          labelBuilder: (id) {
+            if (id == null) return 'Select model';
+            return '${_phoneModels.firstWhere((m) => m['id'] == id)['name']}';
+          },
+          onChanged: (v) {
+            setState(() {
+              _phoneModelId = v;
+              _coverTypeId = null;
+            });
+            _loadCoverTypes();
+          },
+        ),
+        const FieldLabel('Cover category'),
+        FilterPicker<String?>(
+          value: _coverTypeId,
+          items: [null, ..._coverTypes.map((t) => t['id'] as String)],
+          labelBuilder: (id) {
+            if (id == null) return 'Select category';
+            return '${_coverTypes.firstWhere((t) => t['id'] == id)['name']}';
+          },
+          onChanged: (v) {
+            if (_phoneModelId == null) return;
+            setState(() => _coverTypeId = v);
+          },
+        ),
+        const FieldLabel('Design / variant'),
+        AppTextField(controller: _variant),
+        _qtyRateFields(),
+        const FieldLabel('Sell price (optional)'),
+        AppTextField(controller: _lineSell, keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+        const SizedBox(height: AppSpacing.sm),
+        SecondaryButton(label: 'Add to bill', onPressed: _addCoverLine),
+      ],
+    );
+  }
+
+  Widget _buildProductForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SearchField(
+          value: _search,
+          onChanged: (v) {
+            setState(() => _search = v);
+            _onSearchChanged(v);
+          },
+          placeholder: 'Search products…',
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        ..._products.take(8).map(_buildProductRow),
+        const SizedBox(height: AppSpacing.md),
+        _qtyRateFields(),
+        const SizedBox(height: AppSpacing.sm),
+        PrimaryButton(
+          label: 'Add to bill',
+          disabled: _selectedProductId == null,
+          onPressed: _addProductLine,
+        ),
+        if (_cartError != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(_cartError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildProductRow(Map<String, dynamic> p) {
+    final id = '${p['id']}';
+    final selected = _selectedProductId == id;
+    final stock = int.tryParse('${p['stockQty']}') ?? 0;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.accentLight : AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        border: Border.all(color: selected ? AppColors.accent : AppColors.border),
+      ),
+      child: ListTile(
+        dense: true,
+        title: Text('${p['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text('Stock $stock · Buy ${formatMoney(parseMoney('${p['buyPrice']}'))}'),
+        trailing: selected
+            ? const Icon(Icons.check_circle, color: AppColors.accent, size: 20)
+            : const Text('Select', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600)),
+        onTap: () => _selectProduct(p),
+      ),
+    );
+  }
+
+  Widget _qtyRateFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: AppSpacing.sm),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Text(
-                      '${_cart[i].displayName} ×${_cart[i].qty}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Text(formatMoney(_cart[i].qty * _cart[i].unitCost)),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => setState(() => _cart.removeAt(i)),
+                  const FieldLabel('Quantity'),
+                  AppTextField(
+                    controller: _lineQty,
+                    keyboardType: TextInputType.number,
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const FieldLabel('Buy rate (per piece)'),
+                  AppTextField(
+                    controller: _lineCost,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        if (_lineCost.text.isNotEmpty || _selectedProductId != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
+            child: Text(
+              'Line total: ${formatMoney(_linePreviewTotal)} ($_lineQtyValue × ${formatMoney(_lineCostValue)})',
+              style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.accent),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCartCard() {
+    return _sectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(AppIcons.shoppingBag, size: 18, color: AppColors.text),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Bill items (${_cart.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              if (_cart.isNotEmpty)
+                TextButton(onPressed: () => setState(() => _cart.clear()), child: const Text('Clear')),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          if (_cart.isEmpty)
+            const Text('No items yet', style: TextStyle(color: AppColors.muted))
+          else
+            ..._cart.map(_buildCartLine),
         ],
       ),
     );
   }
 
-  Widget _summaryRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+  Widget _buildCartLine(_PurchaseCartLine line) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted))),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(line.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  '${formatMoney(line.unitCost)} each',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove, size: 18),
+                onPressed: () => _adjustCartQty(line, -1),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              SizedBox(
+                width: 28,
+                child: Text('${line.qty}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 18),
+                onPressed: () => _adjustCartQty(line, 1),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Text(formatMoney(line.lineTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );
+  }
+
+  Widget _buildSummaryCard() {
+    return _sectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _summaryRow('Subtotal', formatMoney(_subtotal)),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              const Expanded(child: Text('Discount', style: TextStyle(color: AppColors.muted))),
+              SizedBox(
+                width: 140,
+                child: AppTextField(
+                  controller: _discount,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _summaryRow('Total', formatMoney(_total), bold: true),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              const Expanded(child: Text('Paid now', style: TextStyle(color: AppColors.muted))),
+              SizedBox(
+                width: 140,
+                child: AppTextField(
+                  controller: _paid,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          const FieldLabel('Payment method'),
+          FilterPicker<String>(
+            value: _payment,
+            items: const ['CASH', 'UPI', 'CARD', 'BANK'],
+            labelBuilder: paymentLabel,
+            onChanged: (v) => setState(() => _payment = v ?? 'CASH'),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _summaryRow('Balance due', formatMoney(_balance), color: _balance > 0 ? AppColors.amber : AppColors.green),
+          if (_submitError != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(_submitError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({required Widget child}) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(AppRadii.card),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _summaryRow(String label, String value, {bool bold = false, Color? color}) {
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: TextStyle(color: AppColors.muted, fontWeight: bold ? FontWeight.w600 : null))),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
+            fontSize: bold ? 18 : 15,
+            color: color ?? AppColors.text,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _errorBanner(String message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Text(message, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+    );
+  }
+
+  Widget _infoBanner(String message) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.amberBg,
+        borderRadius: BorderRadius.circular(AppRadii.input),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Text(message, style: const TextStyle(color: AppColors.amber, fontSize: 14)),
+    );
+  }
+}
+
+String paymentLabel(String method) {
+  switch (method) {
+    case 'CASH':
+      return 'Cash';
+    case 'UPI':
+      return 'UPI';
+    case 'CARD':
+      return 'Card';
+    case 'BANK':
+      return 'Bank';
+    default:
+      return method;
   }
 }

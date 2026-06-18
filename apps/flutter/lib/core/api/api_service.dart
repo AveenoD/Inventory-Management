@@ -3,19 +3,20 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 
 import '../auth/token_store.dart';
+import 'api_config.dart';
 import 'api_error.dart';
 import 'file_download.dart';
 import '../../domain/models/import_result.dart';
 
-/// Production API — same as web and Expo mobile.
-const kApiBaseUrl = 'https://sk-mobile-api.onrender.com';
+/// Production API — override with --dart-define=API_URL=...
+export 'api_config.dart' show kApiBaseUrl, apiBaseUrl;
 
 typedef VoidCallback = void Function();
 
 class ApiService {
   ApiService(this._tokenStore) {
     _dio = Dio(BaseOptions(
-      baseUrl: kApiBaseUrl,
+      baseUrl: apiBaseUrl,
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
       headers: {'Content-Type': 'application/json'},
@@ -46,6 +47,20 @@ class ApiService {
 
   static const _importExportTimeout = Duration(seconds: 120);
 
+  ApiError _mapHttpError(int status, String fallback) {
+    if (status == 404) {
+      return ApiError(
+        status,
+        'This feature is not available on the server yet. '
+        'Deploy the latest API, or rebuild the app with your local API URL '
+        '(flutter build apk --dart-define=API_URL=http://YOUR_PC_IP:4000).',
+      );
+    }
+    if (status == 401) return ApiError(status, 'Session expired. Please sign in again.');
+    if (status >= 500) return ApiError(status, 'Server error. Please try again in a moment.');
+    return ApiError(status, fallback);
+  }
+
   ApiError _dioError(DioException e, String fallback) {
     final status = e.response?.statusCode ?? 0;
     final body = e.response?.data;
@@ -64,7 +79,10 @@ class ApiService {
     if (e.type == DioExceptionType.connectionError) {
       return ApiError(status, 'Network error — check your internet connection.');
     }
-    return ApiError(status, e.message ?? fallback);
+    if (status == 404 || (e.message?.contains('404') ?? false)) {
+      return _mapHttpError(404, fallback);
+    }
+    return ApiError(status, fallback);
   }
 
   String _filenameFromDisposition(String? disposition, String fallback) {
@@ -118,19 +136,18 @@ class ApiService {
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       final body = e.response?.data;
-      String message;
       if (body is Map && body['error'] != null) {
-        message = body['error'].toString();
-      } else if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        message =
-            'Request timed out. Check that the API is running and the database is reachable.';
-      } else if (e.type == DioExceptionType.connectionError) {
-        message = 'Network error — is the API running?';
-      } else {
-        message = e.message ?? 'Request failed';
+        throw ApiError(status, body['error'].toString());
       }
-      throw ApiError(status, message);
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        throw ApiError(status, 'Request timed out. Check that the API is running.');
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        throw ApiError(status, 'Network error — is the API running?');
+      }
+      if (status == 404) throw _mapHttpError(404, 'Request failed');
+      throw ApiError(status, 'Request failed ($status)');
     }
   }
 
