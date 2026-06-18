@@ -376,9 +376,22 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  '${sale['customerName'] ?? 'Walk-in'}',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${sale['customerName'] ?? 'Walk-in'}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.text),
+                    ),
+                    if (sale['invoiceNo'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${sale['invoiceNo']}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.accent),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               AppBadge(label: paymentLabel(method), tone: paymentBadgeTone(method)),
@@ -398,6 +411,14 @@ class _SalesListScreenState extends ConsumerState<SalesListScreen> {
                 child: Text(
                   formatMoney(parseMoney('${sale['total']}')),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.text),
+                ),
+              ),
+              InkWell(
+                onTap: () => context.push('/sales/${sale['id']}/invoice'),
+                borderRadius: BorderRadius.circular(8),
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(AppIcons.fileText, size: 18, color: AppColors.accent),
                 ),
               ),
               InkWell(

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Calendar, IndianRupee, Package, Search, ShoppingBag, Trash2 } from "lucide-react";
+import { Calendar, FileText, IndianRupee, Package, Search, ShoppingBag, Trash2 } from "lucide-react";
 import type { SaleDto } from "@sk-mobile/shared";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
@@ -278,15 +278,25 @@ export default function SalesPage() {
                     </span>
                   </td>
                   <td className="col-action">
-                    <button
-                      type="button"
-                      className="inventory-stock-btn danger"
-                      title="Delete sale"
-                      aria-label="Delete sale"
-                      onClick={() => setDeleteTarget(s)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="sales-row-actions">
+                      <Link
+                        href={`/sales/${s.id}/invoice`}
+                        className="inventory-stock-btn"
+                        title="View invoice"
+                        aria-label="View invoice"
+                      >
+                        <FileText size={16} />
+                      </Link>
+                      <button
+                        type="button"
+                        className="inventory-stock-btn danger"
+                        title="Delete sale"
+                        aria-label="Delete sale"
+                        onClick={() => setDeleteTarget(s)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

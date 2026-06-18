@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatMoney } from "@/lib/format";
 import { Download } from "lucide-react";
+import { InvoiceSettingsCard } from "@/components/settings/invoice-settings-card";
 
 type ExportPeriod = "month" | "day";
 
@@ -88,6 +89,8 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader title="Settings" subtitle="Import and export business data" />
+
+      <InvoiceSettingsCard />
 
       <div className="card form-stack" style={{ maxWidth: 520, marginBottom: "1rem" }}>
         <h3 style={{ marginTop: 0 }}>Export Excel</h3>

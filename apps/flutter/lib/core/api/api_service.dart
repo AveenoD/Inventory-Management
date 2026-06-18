@@ -239,6 +239,33 @@ class ApiService {
   Future<void> deleteSale(String saleId) =>
       _request('DELETE', '/api/v1/inventory/sales/$saleId');
 
+  Future<Map<String, dynamic>> getSaleInvoice(String saleId) =>
+      _request('GET', '/api/v1/inventory/sales/$saleId/invoice');
+
+  Future<Map<String, dynamic>> getInvoiceSettings() =>
+      _request('GET', '/api/v1/settings/invoice');
+
+  Future<Map<String, dynamic>> updateInvoiceSettings(Map<String, dynamic> data) =>
+      _request('PUT', '/api/v1/settings/invoice', data: data);
+
+  // ── Purchases ─────────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> getPurchases({int page = 1, String? date, String? partyId}) =>
+      _request('GET', '/api/v1/purchases', queryParameters: {
+        'page': page,
+        'limit': 50,
+        if (date != null) 'date': date,
+        if (partyId != null) 'partyId': partyId,
+      });
+
+  Future<Map<String, dynamic>> getPurchase(String id) =>
+      _request('GET', '/api/v1/purchases/$id');
+
+  Future<Map<String, dynamic>> createPurchase(Map<String, dynamic> data) =>
+      _request('POST', '/api/v1/purchases', data: data);
+
+  Future<Map<String, dynamic>> addPurchasePayment(String id, Map<String, dynamic> data) =>
+      _request('POST', '/api/v1/purchases/$id/payments', data: data);
+
   // ── Recharge ──────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getRechargeEntries(
     String monthId, {

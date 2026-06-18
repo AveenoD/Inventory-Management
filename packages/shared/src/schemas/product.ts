@@ -48,6 +48,7 @@ export const createSaleSchema = z.object({
   customerName: z.string().optional(),
   paymentMethod: z.enum(["CASH", "UPI", "CARD"]).default("CASH"),
   discount: z.number().min(0).default(0),
+  warrantyNote: z.string().max(2000).optional(),
   lines: z
     .array(
       z.object({
@@ -92,6 +93,7 @@ export type ProductDto = {
 
 export type SaleDto = {
   id: string;
+  invoiceNo: string | null;
   date: string;
   customerName: string | null;
   paymentMethod: string;
@@ -99,6 +101,7 @@ export type SaleDto = {
   discount: string;
   total: string;
   totalCost: string;
+  warrantyNote: string | null;
   lines: Array<{
     id: string;
     productId: string;

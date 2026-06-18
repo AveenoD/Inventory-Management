@@ -505,6 +505,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             runSpacing: AppSpacing.sm,
             children: const [
               _QuickActionTile(title: '+ New Sale', sub: 'Create invoice', tone: StatTone.blue, route: '/sales/new'),
+              _QuickActionTile(title: '+ Purchase', sub: 'Stock from supplier', tone: StatTone.teal, route: '/purchases/new'),
               _QuickActionTile(title: '+ Recharge', sub: 'Add recharge', tone: StatTone.green, route: '/recharge'),
               _QuickActionTile(title: '+ Repair', sub: 'New intake', tone: StatTone.orange, route: '/repair?intake=1'),
               _QuickActionTile(title: '+ Product', sub: 'Inventory', tone: StatTone.purple, route: '/inventory'),

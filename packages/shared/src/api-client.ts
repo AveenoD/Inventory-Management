@@ -26,6 +26,11 @@ import type {
   PartyTransactionInput,
 } from "./schemas/entries.js";
 import type {
+  InvoiceSettingsDto,
+  SaleInvoiceDto,
+  UpdateInvoiceSettingsInput,
+} from "./schemas/invoice.js";
+import type {
   NotificationsResponse,
   NotificationDto,
   RegisterPushDeviceInput,
@@ -373,6 +378,17 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       }),
     deleteSale: (saleId: string) =>
       request<void>(`/api/v1/inventory/sales/${saleId}`, { method: "DELETE" }),
+    getSale: (saleId: string) =>
+      request<SaleDto>(`/api/v1/inventory/sales/${saleId}`),
+    getSaleInvoice: (saleId: string) =>
+      request<SaleInvoiceDto>(`/api/v1/inventory/sales/${saleId}/invoice`),
+    getInvoiceSettings: () =>
+      request<InvoiceSettingsDto>("/api/v1/settings/invoice"),
+    updateInvoiceSettings: (data: UpdateInvoiceSettingsInput) =>
+      request<InvoiceSettingsDto>("/api/v1/settings/invoice", {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
     getCategories: () =>
       request<{ data: Array<{ id: string; name: string }> }>("/api/v1/inventory/categories"),
     createCategory: (name: string) =>
@@ -461,6 +477,29 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
     deletePartyTransaction: (monthId: string, txId: string) =>
       request<void>(`/api/v1/months/${monthId}/party-transactions/${txId}`, {
         method: "DELETE",
+      }),
+    getPurchases: (page = 1, opts?: { date?: string; partyId?: string; limit?: number }) => {
+      const q = new URLSearchParams({ page: String(page), limit: String(opts?.limit ?? 50) });
+      if (opts?.date) q.set("date", opts.date);
+      if (opts?.partyId) q.set("partyId", opts.partyId);
+      return request<PaginatedResponse<import("./schemas/purchase.js").PurchaseDto>>(
+        `/api/v1/purchases?${q}`,
+      );
+    },
+    getPurchase: (id: string) =>
+      request<import("./schemas/purchase.js").PurchaseDto>(`/api/v1/purchases/${id}`),
+    createPurchase: (data: import("./schemas/purchase.js").CreatePurchaseInput) =>
+      request<import("./schemas/purchase.js").PurchaseDto>("/api/v1/purchases", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    addPurchasePayment: (
+      id: string,
+      data: import("./schemas/purchase.js").AddPurchasePaymentInput,
+    ) =>
+      request<import("./schemas/purchase.js").PurchaseDto>(`/api/v1/purchases/${id}/payments`, {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
     importExcel: async (file: File, year: number, month: number, dryRun = false) => {
       const token = getToken?.();

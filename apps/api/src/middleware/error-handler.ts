@@ -36,6 +36,11 @@ export function errorHandler(
     if (err.code === "P2025") {
       return res.status(404).json({ error: "Not found" });
     }
+    if (err.code === "P2022") {
+      return res.status(503).json({
+        error: "Database schema is out of date. Run: cd apps/api && npx prisma migrate deploy",
+      });
+    }
   }
   if (err && typeof err === "object" && "issues" in err) {
     return res.status(400).json({ error: "Validation failed" });
@@ -43,6 +48,12 @@ export function errorHandler(
   const dbMsg = dbErrorMessage(err);
   if (dbMsg) {
     return res.status(503).json({ error: dbMsg });
+  }
+  if (err instanceof Error) {
+    const msg = err.message?.trim();
+    if (msg && !msg.includes("Invalid `") && !msg.includes("invocation in")) {
+      return res.status(400).json({ error: msg });
+    }
   }
   console.error(err);
   res.status(500).json({ error: "Internal server error" });

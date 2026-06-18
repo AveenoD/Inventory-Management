@@ -71,6 +71,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   final _customer = TextEditingController();
   final _received = TextEditingController();
   final _discount = TextEditingController();
+  final _warranty = TextEditingController();
   final List<_CartLine> _cart = [];
   List<Map<String, dynamic>> _products = [];
 
@@ -91,6 +92,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     _customer.dispose();
     _received.dispose();
     _discount.dispose();
+    _warranty.dispose();
     super.dispose();
   }
 
@@ -200,11 +202,12 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     });
     try {
       final api = ref.read(apiServiceProvider);
-      await api.createSale({
+      final sale = await api.createSale({
         'date': todayIso(),
         'customerName': _customer.text.trim().isEmpty ? null : _customer.text.trim(),
         'paymentMethod': _payment,
         'discount': _discountValue,
+        if (_warranty.text.trim().isNotEmpty) 'warrantyNote': _warranty.text.trim(),
         'lines': _cart
             .map((c) => {
                   'productId': c.productId,
@@ -213,7 +216,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                 })
             .toList(),
       });
-      if (mounted) context.go('/sales');
+      if (mounted) context.go('/sales/${sale['id']}/invoice');
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -493,6 +496,13 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
           _buildPaymentRow(),
           _fieldLabel('Customer (optional)'),
           AppTextField(controller: _customer, hint: 'Walk-in', onChanged: (_) => setState(() {})),
+          _fieldLabel('Warranty / guarantee (optional)'),
+          AppTextField(
+            controller: _warranty,
+            hint: 'Leave blank for default from Settings',
+            maxLines: 3,
+            onChanged: (_) => setState(() {}),
+          ),
           const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
