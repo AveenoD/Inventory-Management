@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import {
   bulkMoneyTransferSchema,
   bulkRechargeSchema,
@@ -40,13 +40,16 @@ import {
 export const dailyRouter = Router({ mergeParams: true });
 dailyRouter.use(requireAuth);
 
-function monthId(req: { params: { id?: string } }): string {
+/** Parent mount uses `:id`; child routes add more param keys (e.g. withdrawalId). */
+type MonthRouteRequest = Request;
+
+function monthId(req: MonthRouteRequest): string {
   const id = req.params.id;
-  if (!id) throw new Error("Month id required");
+  if (typeof id !== "string" || !id) throw new Error("Month id required");
   return id;
 }
 
-async function guardMonth(req: { params: { id?: string } }, userId: string) {
+async function guardMonth(req: MonthRouteRequest, userId: string) {
   return assertMonthAccess(monthId(req), userId);
 }
 
@@ -531,7 +534,7 @@ dailyRouter.post("/expenses/entry", async (req, res, next) => {
   }
 });
 
-async function handleUpdateExpenseEntry(req, res, next) {
+const handleUpdateExpenseEntry: RequestHandler = async (req, res, next) => {
   try {
     await guardMonth(req, req.user!.userId);
     const mid = monthId(req);
@@ -548,9 +551,9 @@ async function handleUpdateExpenseEntry(req, res, next) {
   } catch (e) {
     next(e);
   }
-}
+};
 
-async function handleDeleteExpenseEntry(req, res, next) {
+const handleDeleteExpenseEntry: RequestHandler = async (req, res, next) => {
   try {
     await guardMonth(req, req.user!.userId);
     const mid = monthId(req);
@@ -561,7 +564,7 @@ async function handleDeleteExpenseEntry(req, res, next) {
   } catch (e) {
     next(e);
   }
-}
+};
 
 dailyRouter.patch("/expenses/entry", handleUpdateExpenseEntry);
 dailyRouter.put("/expenses/entry", handleUpdateExpenseEntry);

@@ -283,7 +283,7 @@ export default function NewPartyPurchasePage() {
       const existing = prev.find((c) => c.type === "product" && c.productId === p.id);
       if (existing && existing.type === "product") {
         return prev.map((c) =>
-          c.productId === p.id && c.type === "product" ? { ...c, qty: c.qty + 1 } : c,
+          c.type === "product" && c.productId === p.id ? { ...c, qty: c.qty + 1 } : c,
         );
       }
       return [
@@ -307,7 +307,7 @@ export default function NewPartyPurchasePage() {
       const existing = prev.find((c) => c.type === "product" && c.productId === product.id);
       if (existing && existing.type === "product") {
         return prev.map((c) =>
-          c.productId === product.id && c.type === "product"
+          c.type === "product" && c.productId === product.id
             ? { ...c, qty: c.qty + qty, unitCost }
             : c,
         );

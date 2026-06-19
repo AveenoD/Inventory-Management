@@ -91,7 +91,7 @@ function toRechargePayload(
   return {
     date,
     operator,
-    ...(face > 0 ? { rechargeAmount: face } : {}),
+    rechargeAmount: face > 0 ? face : 0,
     saleProfit: parseMoneyInput(income.saleProfit),
     chillar: parseMoneyInput(income.chillar),
     act: parseMoneyInput(income.act),
