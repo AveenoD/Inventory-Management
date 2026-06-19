@@ -417,10 +417,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> updateExpenseEntry(
           String monthId, Map<String, dynamic> body) =>
-      _request('PATCH', '/api/v1/months/$monthId/expenses/entry', data: body);
+      _request('POST', '/api/v1/months/$monthId/expenses/entry/update', data: body);
 
   Future<void> deleteExpenseEntry(String monthId, Map<String, dynamic> body) =>
-      _request('DELETE', '/api/v1/months/$monthId/expenses/entry', data: body);
+      _request('POST', '/api/v1/months/$monthId/expenses/entry/delete', data: body);
 
   Future<Map<String, dynamic>> createWithdrawal(
           String monthId, Map<String, dynamic> body) =>

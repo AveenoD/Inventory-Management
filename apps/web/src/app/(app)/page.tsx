@@ -44,7 +44,7 @@ export default function TodayPage() {
   const [day1PromptOpen, setDay1PromptOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data, isPending, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isPending, isLoading, isFetching, error } = useQuery({
     queryKey: ["today", date],
     queryFn: () => api.getToday(date),
     retry: 1,
@@ -89,6 +89,10 @@ export default function TodayPage() {
     [data?.salesLast7Days],
   );
 
+  const retryLoad = () => {
+    void queryClient.invalidateQueries({ queryKey: ["today", date] });
+  };
+
   const showLoader = isPending || isLoading || (isFetching && !data);
 
   if (showLoader) return <PageLoader message="Loading dashboard…" />;
@@ -104,7 +108,7 @@ export default function TodayPage() {
             API may be waking up (Render free tier). Wait a moment and retry.
           </p>
         )}
-        <button type="button" onClick={() => refetch()}>Retry</button>
+        <button type="button" onClick={retryLoad}>Retry</button>
       </div>
     );
   }
@@ -113,7 +117,7 @@ export default function TodayPage() {
       <div className="card error-card">
         <h3>Could not load dashboard</h3>
         <p className="muted">No data returned from the server.</p>
-        <button type="button" onClick={() => refetch()}>Retry</button>
+        <button type="button" onClick={retryLoad}>Retry</button>
       </div>
     );
   }

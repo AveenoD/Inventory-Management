@@ -531,7 +531,7 @@ dailyRouter.post("/expenses/entry", async (req, res, next) => {
   }
 });
 
-dailyRouter.patch("/expenses/entry", async (req, res, next) => {
+async function handleUpdateExpenseEntry(req, res, next) {
   try {
     await guardMonth(req, req.user!.userId);
     const mid = monthId(req);
@@ -548,9 +548,9 @@ dailyRouter.patch("/expenses/entry", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
-});
+}
 
-dailyRouter.delete("/expenses/entry", async (req, res, next) => {
+async function handleDeleteExpenseEntry(req, res, next) {
   try {
     await guardMonth(req, req.user!.userId);
     const mid = monthId(req);
@@ -561,7 +561,14 @@ dailyRouter.delete("/expenses/entry", async (req, res, next) => {
   } catch (e) {
     next(e);
   }
-});
+}
+
+dailyRouter.patch("/expenses/entry", handleUpdateExpenseEntry);
+dailyRouter.put("/expenses/entry", handleUpdateExpenseEntry);
+dailyRouter.post("/expenses/entry/update", handleUpdateExpenseEntry);
+
+dailyRouter.delete("/expenses/entry", handleDeleteExpenseEntry);
+dailyRouter.post("/expenses/entry/delete", handleDeleteExpenseEntry);
 
 // Damage
 dailyRouter.get("/damages", async (req, res, next) => {

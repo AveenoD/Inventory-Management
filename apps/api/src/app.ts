@@ -83,7 +83,7 @@ export function createApp() {
     );
     try {
       await Promise.race([dbCheck, timeout]);
-      res.json({ status: "ok", db: "connected" });
+      res.json({ status: "ok", db: "connected", apiVersion: "1.0.1" });
     } catch {
       res.status(503).json({ status: "degraded", db: "disconnected" });
     }

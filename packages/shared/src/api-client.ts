@@ -166,13 +166,13 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       monthId: string,
       body: { date: string; category: string; amount: number; description?: string },
     ) =>
-      request(`/api/v1/months/${monthId}/expenses/entry`, {
-        method: "PATCH",
+      request(`/api/v1/months/${monthId}/expenses/entry/update`, {
+        method: "POST",
         body: JSON.stringify(body),
       }),
     deleteExpenseEntry: (monthId: string, body: { date: string; category: string }) =>
-      request(`/api/v1/months/${monthId}/expenses/entry`, {
-        method: "DELETE",
+      request(`/api/v1/months/${monthId}/expenses/entry/delete`, {
+        method: "POST",
         body: JSON.stringify(body),
       }),
     getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) => {

@@ -288,12 +288,7 @@ export const api = {
     body: { date: string; category: string; amount: number; description?: string },
   ) => withAuth(() => client.updateExpenseEntry(monthId, body)),
   deleteExpenseEntry: (monthId: string, body: { date: string; category: string }) =>
-    withAuth(() =>
-      requestJson<void>(`/api/v1/months/${monthId}/expenses/entry`, {
-        method: "DELETE",
-        body: JSON.stringify(body),
-      }),
-    ),
+    withAuth(() => client.deleteExpenseEntry(monthId, body)),
   getShopExpenses: (monthId: string, page = 1, limit = 31, from?: string, to?: string) =>
     withAuth(() => client.getShopExpenses(monthId, page, limit, from, to)),
   bulkDamage: (monthId: string, entries: unknown[]) =>
