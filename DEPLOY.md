@@ -88,7 +88,7 @@ Do **not** commit `.env` files. Use `.env.example` as reference.
 | API 503 health | `DATABASE_URL` wrong or Supabase paused |
 | Build fails on Render | `NODE_ENV=production` skips dev deps — fixed via `NPM_CONFIG_PRODUCTION=false` in build; ensure latest `render.yaml` is pushed |
 | Start fails / migrate error | Set `DATABASE_URL` in Render **before** deploy; password must be URL-encoded (`@` → `%40`) |
-| Netlify build fails | Node 20; run `npm ci && npm run build` locally from repo root |
+| Netlify build fails | Node 20; run `npm ci --workspace=@sk-mobile/shared --workspace=@sk-mobile/web --include-workspace-root && npm run build --workspace=@sk-mobile/shared && npm run build --workspace=@sk-mobile/web` from repo root |
 
 ---
 

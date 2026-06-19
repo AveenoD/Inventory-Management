@@ -9,7 +9,7 @@ services:
     plan: free
     healthCheckPath: /health
     buildCommand: >-
-      NPM_CONFIG_PRODUCTION=false npm ci &&
+      NPM_CONFIG_PRODUCTION=false npm ci --workspace=@sk-mobile/shared --workspace=@sk-mobile/api --include-workspace-root &&
       npm run build --workspace=@sk-mobile/shared &&
       npm run db:generate --workspace=@sk-mobile/api &&
       npm run build --workspace=@sk-mobile/api &&

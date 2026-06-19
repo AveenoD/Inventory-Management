@@ -17,7 +17,7 @@ jobs:
           node-version: "22"
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --workspace=@sk-mobile/shared --workspace=@sk-mobile/api --workspace=@sk-mobile/web --include-workspace-root
 
       - name: Generate Prisma client
         run: npm run db:generate --workspace=@sk-mobile/api
