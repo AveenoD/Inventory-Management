@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PRODUCT_KIND_LABELS, type ProductDto, type ProductKind } from "@sk-mobile/shared";
+import {
+  PRODUCT_KIND_LABELS,
+  getEffectiveSalePrice,
+  getProductDiscount,
+  type ProductDto,
+  type ProductKind,
+} from "@sk-mobile/shared";
 import {
   CircleDollarSign,
   Filter,
   Minus,
   Plus,
+  ScanLine,
   Search,
   ShoppingCart,
   Trash2,
@@ -28,7 +35,7 @@ type CartLine = {
 };
 
 function unitSalePrice(p: ProductDto): number {
-  return parseFloat(p.sellPrice) || 0;
+  return getEffectiveSalePrice(p);
 }
 
 const PAGE_SIZE = 20;
@@ -44,7 +51,12 @@ const TABS: Array<{ key: "ALL" | ProductKind; label: string }> = [
 
 export default function NewSalePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const scanMode = searchParams.get("scan") === "1";
   const qc = useQueryClient();
+  const scanInputRef = useRef<HTMLInputElement>(null);
+  const [scanBuffer, setScanBuffer] = useState("");
+  const [scanStatus, setScanStatus] = useState<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   const [customerName, setCustomerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "UPI" | "CARD">("CASH");
@@ -62,6 +74,27 @@ export default function NewSalePage() {
     const t = setTimeout(() => setSearchDebounced(search.trim()), 250);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    if (!scanMode) return;
+    scanInputRef.current?.focus();
+  }, [scanMode]);
+
+  async function handleScanSubmit(raw: string) {
+    const code = raw.trim();
+    if (!code) return;
+    setScanStatus(null);
+    setCartError("");
+    try {
+      const { product } = await api.scanProduct(code);
+      addToCart(product);
+      setScanStatus(`Added: ${product.name}`);
+    } catch (e) {
+      setScanStatus((e as Error).message || "Product not found");
+    }
+    setScanBuffer("");
+    scanInputRef.current?.focus();
+  }
 
   const {
     data: productsRes,
@@ -163,6 +196,34 @@ export default function NewSalePage() {
       )}
       {!isPending && !error && (
         <div className="pos-shell">
+          {scanMode && (
+            <div className="pos-scan-banner">
+              <div>
+                <strong>
+                  <ScanLine size={16} style={{ verticalAlign: -2, marginRight: 4 }} />
+                  Scanner ready
+                </strong>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Scan barcode with USB gun — item adds to cart automatically.
+                </div>
+                {scanStatus && <div style={{ fontSize: 12, marginTop: 4 }}>{scanStatus}</div>}
+              </div>
+              <input
+                ref={scanInputRef}
+                className="pos-scan-input"
+                value={scanBuffer}
+                onChange={(e) => setScanBuffer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleScanSubmit(scanBuffer);
+                  }
+                }}
+                aria-label="Barcode scanner input"
+                autoComplete="off"
+              />
+            </div>
+          )}
           <div className="pos-left">
             <div className="pos-tabs">
               {TABS.map((t) => (
@@ -216,6 +277,8 @@ export default function NewSalePage() {
                 {products.map((p) => {
                   const out = p.stockQty <= 0;
                   const inCart = cart.find((c) => c.productId === p.id);
+                  const disc = getProductDiscount(p);
+                  const price = disc.hasDiscount ? p.effectivePrice : p.sellPrice;
                   return (
                     <div
                       key={p.id}
@@ -233,7 +296,18 @@ export default function NewSalePage() {
                       </div>
 
                       <div className="pos-row-right">
-                        <div className="pos-product-price">{formatMoney(p.sellPrice)}</div>
+                        <div className="pos-product-price">
+                          {disc.hasDiscount ? (
+                            <>
+                              <span className="muted" style={{ textDecoration: "line-through", fontSize: 11 }}>
+                                {formatMoney(p.sellPrice)}
+                              </span>{" "}
+                              {formatMoney(price)}
+                            </>
+                          ) : (
+                            formatMoney(price)
+                          )}
+                        </div>
                         <button
                           type="button"
                           className="pos-add"

@@ -9,6 +9,8 @@ import {
   paginationQuerySchema,
   buildProductName,
   PRODUCT_KIND_LABELS,
+  getEffectiveSalePrice,
+  parseProductScanCode,
   type ProductKind,
 } from "@sk-mobile/shared";
 import { prisma } from "../lib/prisma.js";
@@ -24,6 +26,8 @@ import {
   resolveCoverType,
   ensureCategoryForKind,
   productInclude,
+  allocateProductSku,
+  findProductByScanCode,
 } from "../services/inventory-product.service.js";
 import {
   fireNotification,
@@ -125,6 +129,7 @@ inventoryRouter.get("/products", async (req, res, next) => {
           { name: { contains: search, mode: "insensitive" as const } },
           { phoneModel: { contains: search, mode: "insensitive" as const } },
           { variantName: { contains: search, mode: "insensitive" as const } },
+          { sku: { contains: search, mode: "insensitive" as const } },
           { coverType: { name: { contains: search, mode: "insensitive" as const } } },
           { phoneModelRef: { name: { contains: search, mode: "insensitive" as const } } },
         ],
@@ -365,6 +370,11 @@ inventoryRouter.post("/products", async (req, res, next) => {
 
     const buyPriceFixed = fmt(d(body.buyPrice));
     const sellPriceFixed = fmt(d(sellPrice));
+    const offerRaw = body.offerPrice;
+    const offerPriceFixed =
+      offerRaw != null && offerRaw > 0 && offerRaw < parseFloat(sellPriceFixed)
+        ? fmt(d(offerRaw))
+        : null;
     const repairChargeFixed =
       repairCharge != null ? fmt(d(repairCharge)) : null;
 
@@ -409,11 +419,13 @@ inventoryRouter.post("/products", async (req, res, next) => {
     }
 
     const product = await prisma.$transaction(async (tx) => {
+      const sku = await allocateProductSku(userId, tx);
       const created = await tx.product.create({
         data: {
           userId,
           kind,
           name,
+          sku,
           categoryId,
           phoneModel: (phoneModelName ?? body.phoneModel?.trim()) || null,
           phoneModelId,
@@ -423,6 +435,7 @@ inventoryRouter.post("/products", async (req, res, next) => {
           repairCharge: repairChargeFixed,
           buyPrice: buyPriceFixed,
           sellPrice: sellPriceFixed,
+          offerPrice: offerPriceFixed,
           minStock: body.minStock,
           stockQty: body.openingStock,
         },
@@ -444,6 +457,25 @@ inventoryRouter.post("/products", async (req, res, next) => {
       });
     });
     res.status(201).json(mapProductDto(product));
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.get("/products/scan/:code", async (req, res, next) => {
+  try {
+    const parsed = parseProductScanCode(req.params.code ?? "");
+    if (!parsed) {
+      res.status(400).json({ error: "Invalid scan code" });
+      return;
+    }
+    const product = await findProductByScanCode(req.user!.userId, parsed);
+    if (!product) {
+      res.status(404).json({ error: "Product not found for this code" });
+      return;
+    }
+    const dto = mapProductDto(product);
+    res.json({ product: dto, effectivePrice: dto.effectivePrice });
   } catch (e) {
     next(e);
   }
@@ -496,12 +528,24 @@ inventoryRouter.patch("/products/:id", async (req, res, next) => {
       res.status(404).json({ error: "Product not found" });
       return;
     }
+    const nextSell = body.sellPrice !== undefined ? body.sellPrice : parseFloat(fmt(d(existing.sellPrice)));
+    if (body.offerPrice != null && body.offerPrice > nextSell) {
+      res.status(400).json({ error: "Offer price cannot exceed MRP (sell price)" });
+      return;
+    }
+    const offerPriceUpdate =
+      body.offerPrice === undefined
+        ? undefined
+        : body.offerPrice == null || body.offerPrice <= 0
+          ? null
+          : fmt(d(body.offerPrice));
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data: {
         ...(body.name !== undefined && { name: body.name }),
         ...(body.buyPrice !== undefined && { buyPrice: fmt(d(body.buyPrice)) }),
         ...(body.sellPrice !== undefined && { sellPrice: fmt(d(body.sellPrice)) }),
+        ...(offerPriceUpdate !== undefined && { offerPrice: offerPriceUpdate }),
         ...(body.repairCharge !== undefined && { repairCharge: fmt(d(body.repairCharge)) }),
         ...(body.minStock !== undefined && { minStock: body.minStock }),
       },
@@ -637,7 +681,14 @@ inventoryRouter.post("/sales", async (req, res, next) => {
         if (product.stockQty < line.quantity) {
           throw new Error(`Insufficient stock for ${product.name}`);
         }
-        const unitPrice = d(line.unitPrice ?? product.sellPrice);
+        const unitPrice = d(
+          line.unitPrice ??
+            getEffectiveSalePrice({
+              sellPrice: fmt(d(product.sellPrice)),
+              offerPrice:
+                product.offerPrice != null ? fmt(d(product.offerPrice)) : null,
+            }),
+        );
         const unitCost = d(product.buyPrice);
         const lineTotal = unitPrice.times(line.quantity);
         subtotal = subtotal.plus(lineTotal);

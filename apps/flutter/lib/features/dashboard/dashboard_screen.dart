@@ -503,8 +503,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           return Wrap(
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.sm,
-            children: const [
+            children: [
               _QuickActionTile(title: '+ New Sale', sub: 'Create invoice', tone: StatTone.blue, route: '/sales/new'),
+              _QuickActionTile(title: 'Barcode Labels', sub: 'Print stickers', tone: StatTone.purple, route: '/qr-labels'),
+              _QuickActionTile(title: 'Scan Sale', sub: 'Camera scan', tone: StatTone.green, route: '/sales/new?scan=1'),
               _QuickActionTile(title: '+ Purchase', sub: 'Stock from supplier', tone: StatTone.teal, route: '/purchases/new'),
               _QuickActionTile(title: '+ Recharge', sub: 'Add recharge', tone: StatTone.green, route: '/recharge'),
               _QuickActionTile(title: '+ Repair', sub: 'New intake', tone: StatTone.orange, route: '/repair?intake=1'),

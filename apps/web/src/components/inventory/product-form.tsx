@@ -74,6 +74,7 @@ export function ProductForm() {
   const [partType, setPartType] = useState<string>(REPAIR_PART_TYPES[0]);
   const [buyPrice, setBuyPrice] = useState("");
   const [sellPrice, setSellPrice] = useState("");
+  const [offerPrice, setOfferPrice] = useState("");
   const [repairCharge, setRepairCharge] = useState("");
   const [minStock, setMinStock] = useState("");
   const [openingStock, setOpeningStock] = useState("");
@@ -149,6 +150,10 @@ export function ProductForm() {
         partType: mode === "repair" ? partType : undefined,
         buyPrice: parseFloat(buyPrice) || 0,
         sellPrice: parseFloat(sellPrice) || parseFloat(repairCharge) || 0,
+        offerPrice:
+          mode !== "repair" && offerPrice.trim()
+            ? parseFloat(offerPrice) || undefined
+            : undefined,
         repairCharge:
           mode === "repair"
             ? parseFloat(repairCharge) || parseFloat(sellPrice) || 0
@@ -485,7 +490,7 @@ export function ProductForm() {
             </div>
           ) : (
             <div>
-              <label className="stat-label">Sell price</label>
+              <label className="stat-label">MRP (sell price)</label>
               <input
                 type="number"
                 step="0.01"
@@ -496,6 +501,22 @@ export function ProductForm() {
             </div>
           )}
         </div>
+
+        {mode !== "repair" && (
+          <div className="form-row">
+            <div>
+              <label className="stat-label">Offer price (optional)</label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                value={offerPrice}
+                onChange={(e) => setOfferPrice(e.target.value)}
+                placeholder="Discounted price for QR sticker"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="form-row">
           <div>

@@ -331,6 +331,7 @@ model Product {
   repairCharge   Decimal?        @db.Decimal(14, 2)
   buyPrice       Decimal         @default(0) @db.Decimal(14, 2)
   sellPrice      Decimal         @default(0) @db.Decimal(14, 2)
+  offerPrice     Decimal?        @db.Decimal(14, 2)
   stockQty       Int             @default(0)
   minStock       Int             @default(0)
   isActive       Boolean         @default(true)
@@ -346,6 +347,7 @@ model Product {
   @@index([userId, kind])
   @@index([userId, isActive])
   @@index([phoneModelId])
+  @@unique([userId, sku])
 }
 
 model StockMovement {

@@ -3,6 +3,7 @@ import {
   buildProductName,
   categoryNameForKind,
   DEFAULT_COVER_TYPES,
+  getEffectiveSalePrice,
   type ProductKind,
 } from "@sk-mobile/shared";
 import { prisma } from "../lib/prisma.js";
@@ -16,8 +17,12 @@ type ProductWithRelations = Product & {
 
 export function mapProductDto(p: ProductWithRelations) {
   const modelName = p.phoneModelRef?.name ?? p.phoneModel;
+  const sellPrice = fmt(d(p.sellPrice));
+  const offerPrice = p.offerPrice != null ? fmt(d(p.offerPrice)) : null;
+  const effective = fmt(d(getEffectiveSalePrice({ sellPrice, offerPrice })));
   return {
     id: p.id,
+    sku: p.sku,
     name: p.name,
     kind: p.kind as ProductKind,
     categoryId: p.categoryId,
@@ -30,11 +35,48 @@ export function mapProductDto(p: ProductWithRelations) {
     partType: p.partType,
     repairCharge: p.repairCharge != null ? fmt(d(p.repairCharge)) : null,
     buyPrice: fmt(d(p.buyPrice)),
-    sellPrice: fmt(d(p.sellPrice)),
+    sellPrice,
+    offerPrice,
+    effectivePrice: effective,
     stockQty: p.stockQty,
     minStock: p.minStock,
     isActive: p.isActive,
   };
+}
+
+type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+
+export async function allocateProductSku(userId: string, tx?: PrismaTx): Promise<string> {
+  const client = tx ?? prisma;
+  const existing = await client.product.findMany({
+    where: { userId, sku: { not: null } },
+    select: { sku: true },
+  });
+  let max = 0;
+  for (const row of existing) {
+    const m = row.sku?.match(/^SK-(\d+)$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  for (let seq = max + 1; seq < max + 100000; seq++) {
+    const sku = `SK-${String(seq).padStart(6, "0")}`;
+    const taken = await client.product.findFirst({ where: { userId, sku } });
+    if (!taken) return sku;
+  }
+  throw new Error("Could not allocate product SKU");
+}
+
+export async function findProductByScanCode(userId: string, rawCode: string) {
+  const code = rawCode.trim();
+  if (!code) return null;
+  const bySku = await prisma.product.findFirst({
+    where: { userId, isActive: true, sku: code },
+    include: productInclude,
+  });
+  if (bySku) return bySku;
+  return prisma.product.findFirst({
+    where: { userId, isActive: true, id: code },
+    include: productInclude,
+  });
 }
 
 export async function ensureDefaultCoverTypesForPhoneModel(userId: string, phoneModelId: string) {

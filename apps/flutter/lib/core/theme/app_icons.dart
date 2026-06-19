@@ -41,4 +41,6 @@ abstract final class AppIcons {
   static const printer = Icons.print_outlined;
   static const share = Icons.share_outlined;
   static const fileText = Icons.description_outlined;
+  static const qrCode = Icons.qr_code_scanner;
+  static const barcode = Icons.barcode_reader;
 }

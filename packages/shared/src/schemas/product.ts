@@ -5,7 +5,7 @@ export type { ProductKind };
 
 export const productKindSchema = z.enum(PRODUCT_KINDS);
 
-export const createProductSchema = z.object({
+const createProductBaseSchema = z.object({
   kind: productKindSchema.default("MOBILE_ACCESSORY"),
   name: z.string().optional(),
   categoryId: z.string().optional(),
@@ -19,9 +19,19 @@ export const createProductSchema = z.object({
   repairCharge: z.number().min(0).optional(),
   buyPrice: z.number().min(0),
   sellPrice: z.number().min(0).optional(),
+  offerPrice: z.number().min(0).optional().nullable(),
   minStock: z.number().int().min(0).default(0),
   openingStock: z.number().int().min(0).default(0),
 });
+
+export const createProductSchema = createProductBaseSchema.refine(
+  (data) => {
+    if (data.offerPrice == null) return true;
+    const mrp = data.sellPrice ?? 0;
+    return data.offerPrice <= mrp;
+  },
+  { message: "Offer price cannot exceed MRP (sell price)", path: ["offerPrice"] },
+);
 
 export const createPhoneModelSchema = z.object({
   name: z.string().min(1).max(120),
@@ -34,7 +44,7 @@ export const createCoverTypeSchema = z.object({
 
 export type PhoneModelDto = { id: string; name: string };
 
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = createProductBaseSchema.partial();
 
 export const stockInSchema = z.object({
   productId: z.string(),
@@ -73,6 +83,7 @@ export type CoverTypeDto = {
 
 export type ProductDto = {
   id: string;
+  sku: string | null;
   name: string;
   kind: ProductKind;
   categoryId: string | null;
@@ -86,9 +97,16 @@ export type ProductDto = {
   repairCharge: string | null;
   buyPrice: string;
   sellPrice: string;
+  offerPrice: string | null;
+  effectivePrice: string;
   stockQty: number;
   minStock: number;
   isActive: boolean;
+};
+
+export type ProductScanResponse = {
+  product: ProductDto;
+  effectivePrice: string;
 };
 
 export type SaleDto = {

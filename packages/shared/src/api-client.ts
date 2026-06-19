@@ -8,6 +8,7 @@ import type {
   PhoneModelDto,
   ProductDto,
   ProductKind,
+  ProductScanResponse,
   SaleDto,
 } from "./schemas/product.js";
 import type {
@@ -354,6 +355,10 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       }),
     getProduct: (id: string) =>
       request<ProductDto>(`/api/v1/inventory/products/${id}`),
+    scanProduct: (code: string) =>
+      request<ProductScanResponse>(
+        `/api/v1/inventory/products/scan/${encodeURIComponent(code)}`,
+      ),
     updateProduct: (id: string, data: Partial<CreateProductInput>) =>
       request<ProductDto>(`/api/v1/inventory/products/${id}`, {
         method: "PATCH",

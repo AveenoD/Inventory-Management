@@ -21,6 +21,8 @@ dependencies:
   path_provider: ^2.1.5
   pdf: ^3.11.3
   printing: ^5.14.2
+  barcode_widget: ^2.0.4
+  mobile_scanner: ^7.0.1
   connectivity_plus: ^6.1.4
   shared_preferences: ^2.5.3
   collection: ^1.19.1

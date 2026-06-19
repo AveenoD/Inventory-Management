@@ -16,6 +16,7 @@ import '../features/not_found/not_found_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/parties/parties_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/qr/qr_labels_screen.dart';
 import '../features/purchases/new_purchase_screen.dart';
 import '../features/purchases/purchases_list_screen.dart';
 import '../features/recharge/recharge_screen.dart';
@@ -81,7 +82,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
         ],
       ),
-      GoRoute(path: '/sales/new', builder: (_, __) => const NewSaleScreen()),
+      GoRoute(
+        path: '/sales/new',
+        builder: (_, state) => NewSaleScreen(
+          scanMode: state.uri.queryParameters['scan'] == '1',
+        ),
+      ),
       GoRoute(
         path: '/sales/:id/invoice',
         builder: (_, state) => SaleInvoiceScreen(saleId: state.pathParameters['id']!),
@@ -100,6 +106,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/purchases', builder: (_, __) => const PurchasesListScreen()),
       GoRoute(path: '/purchases/new', builder: (_, __) => const NewPurchaseScreen()),
       GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
+      GoRoute(path: '/qr-labels', builder: (_, __) => const QrLabelsScreen()),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
     ],
     errorBuilder: (_, __) => const NotFoundScreen(),

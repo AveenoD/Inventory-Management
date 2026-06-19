@@ -225,6 +225,9 @@ class ApiService {
   Future<Map<String, dynamic>> getProduct(String id) =>
       _request('GET', '/api/v1/inventory/products/$id');
 
+  Future<Map<String, dynamic>> scanProduct(String code) =>
+      _request('GET', '/api/v1/inventory/products/scan/${Uri.encodeComponent(code)}');
+
   Future<Map<String, dynamic>> updateProduct(String id, Map<String, dynamic> data) =>
       _request('PATCH', '/api/v1/inventory/products/$id', data: data);
 

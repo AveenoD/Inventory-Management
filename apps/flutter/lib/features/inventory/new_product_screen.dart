@@ -19,9 +19,10 @@ class NewProductScreen extends ConsumerStatefulWidget {
 class _NewProductScreenState extends ConsumerState<NewProductScreen> {
   String _kind = 'MOBILE_COVER';
   final _name = TextEditingController();
-  final _salePrice = TextEditingController();
-  final _costPrice = TextEditingController();
-  final _stockQty = TextEditingController(text: '0');
+  final _sellPrice = TextEditingController();
+  final _offerPrice = TextEditingController();
+  final _buyPrice = TextEditingController();
+  final _openingStock = TextEditingController(text: '0');
   final _minStock = TextEditingController(text: '0');
   String? _phoneModelId;
   String? _coverTypeId;
@@ -38,9 +39,10 @@ class _NewProductScreenState extends ConsumerState<NewProductScreen> {
   @override
   void dispose() {
     _name.dispose();
-    _salePrice.dispose();
-    _costPrice.dispose();
-    _stockQty.dispose();
+    _sellPrice.dispose();
+    _offerPrice.dispose();
+    _buyPrice.dispose();
+    _openingStock.dispose();
     _minStock.dispose();
     super.dispose();
   }
@@ -61,13 +63,26 @@ class _NewProductScreenState extends ConsumerState<NewProductScreen> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      final mrp = parseMoney(_sellPrice.text);
+      final offerRaw = _offerPrice.text.trim();
+      final offer = offerRaw.isEmpty ? null : parseMoney(offerRaw);
+      if (offer != null && offer > mrp) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Offer price cannot exceed MRP')),
+          );
+        }
+        return;
+      }
+
       final body = <String, dynamic>{
         'name': _name.text.trim(),
         'kind': _kind,
-        'salePrice': parseMoney(_salePrice.text),
-        'costPrice': parseMoney(_costPrice.text),
-        'stockQty': int.tryParse(_stockQty.text) ?? 0,
+        'sellPrice': mrp,
+        'buyPrice': parseMoney(_buyPrice.text),
+        'openingStock': int.tryParse(_openingStock.text) ?? 0,
         'minStock': int.tryParse(_minStock.text) ?? 0,
+        if (offer != null) 'offerPrice': offer,
       };
       if (_kind == 'MOBILE_COVER') {
         body['phoneModelId'] = _phoneModelId;
@@ -98,12 +113,14 @@ class _NewProductScreenState extends ConsumerState<NewProductScreen> {
           ),
           const FieldLabel('Name'),
           AppTextField(controller: _name),
-          const FieldLabel('Sale price'),
-          AppTextField(controller: _salePrice, keyboardType: TextInputType.number),
-          const FieldLabel('Cost price'),
-          AppTextField(controller: _costPrice, keyboardType: TextInputType.number),
-          const FieldLabel('Stock qty'),
-          AppTextField(controller: _stockQty, keyboardType: TextInputType.number),
+          const FieldLabel('MRP (sell price)'),
+          AppTextField(controller: _sellPrice, keyboardType: TextInputType.number),
+          const FieldLabel('Offer price (optional)'),
+          AppTextField(controller: _offerPrice, keyboardType: TextInputType.number),
+          const FieldLabel('Buy price'),
+          AppTextField(controller: _buyPrice, keyboardType: TextInputType.number),
+          const FieldLabel('Opening stock'),
+          AppTextField(controller: _openingStock, keyboardType: TextInputType.number),
           const FieldLabel('Min stock'),
           AppTextField(controller: _minStock, keyboardType: TextInputType.number),
           if (_kind == 'MOBILE_COVER') ...[

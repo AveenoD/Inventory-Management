@@ -1,14 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/product_price.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/page_loader.dart';
@@ -51,7 +54,9 @@ class _CartLine {
 }
 
 class NewSaleScreen extends ConsumerStatefulWidget {
-  const NewSaleScreen({super.key});
+  const NewSaleScreen({super.key, this.scanMode = false});
+
+  final bool scanMode;
 
   @override
   ConsumerState<NewSaleScreen> createState() => _NewSaleScreenState();
@@ -78,17 +83,27 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   bool _initialLoading = true;
   bool _fetching = false;
   bool _saving = false;
+  bool _scannerOpen = false;
+  bool _scanProcessing = false;
+  String? _scanStatus;
   Timer? _searchDebounce;
+  final MobileScannerController _scannerController = MobileScannerController();
 
   @override
   void initState() {
     super.initState();
     _loadProducts();
+    if (widget.scanMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _scannerOpen = true);
+      });
+    }
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _scannerController.dispose();
     _customer.dispose();
     _received.dispose();
     _discount.dispose();
@@ -96,7 +111,43 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     super.dispose();
   }
 
-  double _unitSalePrice(Map<String, dynamic> p) => parseMoney('${p['sellPrice']}');
+  double _unitSalePrice(Map<String, dynamic> p) => effectiveSalePrice(p);
+
+  Future<void> _handleScan(String raw) async {
+    final code = raw.trim();
+    if (code.isEmpty || _scanProcessing) return;
+    setState(() {
+      _scanProcessing = true;
+      _scanStatus = null;
+      _cartError = null;
+    });
+    try {
+      final api = ref.read(apiServiceProvider);
+      final res = await api.scanProduct(code);
+      final product = (res['product'] as Map<String, dynamic>?) ?? res;
+      if (!mounted) return;
+      _addToCart(product);
+      await HapticFeedback.lightImpact();
+      setState(() {
+        _scanStatus = 'Added: ${product['name']}';
+        _scannerOpen = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      await HapticFeedback.heavyImpact();
+      setState(() {
+        _scanStatus = e is ApiError ? e.message : 'Product not found';
+      });
+    } finally {
+      if (mounted) setState(() => _scanProcessing = false);
+    }
+  }
+
+  void _onBarcodeDetected(BarcodeCapture capture) {
+    if (capture.barcodes.isEmpty) return;
+    final raw = capture.barcodes.first.rawValue;
+    if (raw != null) _handleScan(raw);
+  }
 
   String _kindLabel(String kind) => _kindLabels[kind] ?? kind;
 
@@ -240,42 +291,122 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       );
     }
 
-    return ScreenShell(
-      title: 'New sale',
-      subtitle: 'Point of sale billing',
-      showBack: true,
-      hideHeaderActions: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (_loadError != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Text(_loadError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
-            ),
-          _buildTabs(),
-          const SizedBox(height: AppSpacing.md),
-          SearchField(
-            value: _search,
-            onChanged: _onSearchChanged,
-            placeholder: 'Search products…',
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (_fetching)
-            const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.sm),
-              child: Center(
-                child: SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+    return Stack(
+      children: [
+        ScreenShell(
+          title: widget.scanMode ? 'Scan sale' : 'New sale',
+          subtitle: widget.scanMode ? 'Scan barcode stickers to add items' : 'Point of sale billing',
+          showBack: true,
+          hideHeaderActions: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.scanMode || _scanStatus != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentLight,
+                    borderRadius: BorderRadius.circular(AppRadii.input),
+                    border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(AppIcons.barcode, size: 18, color: AppColors.accent),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          _scanStatus ?? 'Scanner ready — tap the scan button',
+                          style: const TextStyle(fontSize: 13, color: AppColors.text),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              if (_loadError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Text(_loadError!, style: const TextStyle(color: AppColors.red, fontSize: 14)),
+                ),
+              _buildTabs(),
+              const SizedBox(height: AppSpacing.md),
+              SearchField(
+                value: _search,
+                onChanged: _onSearchChanged,
+                placeholder: 'Search products…',
+              ),
+              const SizedBox(height: AppSpacing.md),
+              if (_fetching)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                    ),
+                  ),
+                ),
+              ..._products.map(_buildProductRow),
+              _buildPagination(),
+              _buildCartCard(),
+            ],
+          ),
+        ),
+        if (_scannerOpen) _buildScannerOverlay(),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: FloatingActionButton(
+            onPressed: () => setState(() {
+              _scannerOpen = true;
+              _scanStatus = null;
+            }),
+            backgroundColor: AppColors.accent,
+            child: const Icon(AppIcons.barcode, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScannerOverlay() {
+    return Material(
+      color: Colors.black,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            MobileScanner(
+              controller: _scannerController,
+              onDetect: _onBarcodeDetected,
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => setState(() => _scannerOpen = false),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'Point camera at product barcode',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                ],
               ),
             ),
-          ..._products.map(_buildProductRow),
-          _buildPagination(),
-          _buildCartCard(),
-        ],
+            if (_scanProcessing)
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+          ],
+        ),
       ),
     );
   }

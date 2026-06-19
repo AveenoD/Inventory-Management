@@ -146,6 +146,7 @@ export const api = {
         `/api/v1/inventory/products/${id}`,
       ),
     ),
+  scanProduct: (code: string) => withAuth(() => client.scanProduct(code)),
   updateProduct: (id: string, data: Parameters<typeof client.updateProduct>[1]) =>
     withAuth(() => client.updateProduct(id, data)),
   deleteProduct: (id: string) =>

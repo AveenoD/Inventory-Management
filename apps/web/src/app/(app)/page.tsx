@@ -21,6 +21,8 @@ import {
   CircleDollarSign,
   Package,
   Pencil,
+  Barcode,
+  ScanLine,
   Smartphone,
   TrendingUp,
   Wallet,
@@ -229,6 +231,14 @@ export default function TodayPage() {
 
           <Link href="/sales/new" className="dash-topbar-action blue">
             + Add Sale
+          </Link>
+          <Link href="/sales/new?scan=1" className="dash-topbar-action blue">
+            <ScanLine size={16} style={{ marginRight: 4, verticalAlign: -2 }} />
+            Scan Sale
+          </Link>
+          <Link href="/qr-labels" className="dash-topbar-action purple">
+            <Barcode size={16} style={{ marginRight: 4, verticalAlign: -2 }} />
+            Barcode Labels
           </Link>
           <Link href="/parties/purchase/new" className="dash-topbar-action green">
             + Purchase
