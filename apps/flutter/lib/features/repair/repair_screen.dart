@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
@@ -513,6 +514,11 @@ class _RepairScreenState extends ConsumerState<RepairScreen> {
     }
 
     items.addAll([
+      RowActionMenuItem(
+        key: 'invoice',
+        label: 'Print Invoice',
+        onPress: () => context.push('/repair/${job['id']}/invoice'),
+      ),
       RowActionMenuItem(key: 'edit', label: 'Edit', onPress: () => _startEdit(job)),
       RowActionMenuItem(
         key: 'delete',

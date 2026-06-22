@@ -136,14 +136,18 @@ export function RepairInvoiceView({ job, shopName = "SK Mobile Shop", logoDataUr
             <thead>
               <tr>
                 <th className="col-sno">#</th>
-                <th className="col-item">Description</th>
+                <th className="col-item">Device</th>
+                <th className="col-item">Customer Name</th>
+                <th className="col-item">Issue</th>
                 <th className="col-amt right">Amount (₹)</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td className="col-sno">1</td>
-                <td className="col-item">Repair Service: {job.device} - {job.issueDescription}</td>
+                <td className="col-item">{job.device ?? "—"}</td>
+                <td className="col-item">{job.customerName || "Walk-in Customer"}</td>
+                <td className="col-item">{job.issueDescription ?? "—"}</td>
                 <td className="col-amt right">{formatMoney(amount).replace("₹", "")}</td>
               </tr>
             </tbody>

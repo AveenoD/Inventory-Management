@@ -371,6 +371,9 @@ class ApiService {
   Future<void> deleteRepairJob(String monthId, String jobId) =>
       _request('DELETE', '/api/v1/months/$monthId/repair-jobs/$jobId');
 
+  Future<Map<String, dynamic>> getRepairJob(String monthId, String jobId) =>
+      _request('GET', '/api/v1/months/$monthId/repair-jobs/$jobId');
+
   // ── Expenses ────────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getShopExpenses(
     String monthId, {

@@ -25,6 +25,7 @@ import '../features/reports/reports_screen.dart';
 import '../features/sales/new_sale_screen.dart';
 import '../features/sales/sales_list_screen.dart';
 import '../features/invoice/sale_invoice_screen.dart';
+import '../features/invoice/repair_invoice_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/transfer/transfer_screen.dart';
 
@@ -91,6 +92,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sales/:id/invoice',
         builder: (_, state) => SaleInvoiceScreen(saleId: state.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/repair/:id/invoice',
+        builder: (_, state) => RepairInvoiceScreen(jobId: state.pathParameters['id']!),
       ),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
