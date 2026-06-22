@@ -5,13 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/api/api_error.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_icons.dart';
 import '../../core/utils/format.dart';
+import '../../core/utils/product_display.dart';
 import '../../core/utils/product_price.dart';
+import '../../core/utils/product_qr.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 import '../../widgets/page_loader.dart';
@@ -87,7 +90,11 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   bool _scanProcessing = false;
   String? _scanStatus;
   Timer? _searchDebounce;
-  final MobileScannerController _scannerController = MobileScannerController();
+  MobileScannerController? _scannerController;
+  final _manualScanInput = TextEditingController();
+  final _manualScanFocus = FocusNode();
+  String? _lastScannedCode;
+  DateTime? _lastScannedAt;
 
   @override
   void initState() {
@@ -95,7 +102,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     _loadProducts();
     if (widget.scanMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _scannerOpen = true);
+        if (mounted) _openScanner(requestCamera: true);
       });
     }
   }
@@ -103,7 +110,9 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _scannerController.dispose();
+    _scannerController?.dispose();
+    _manualScanInput.dispose();
+    _manualScanFocus.dispose();
     _customer.dispose();
     _received.dispose();
     _discount.dispose();
@@ -113,9 +122,62 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
 
   double _unitSalePrice(Map<String, dynamic> p) => effectiveSalePrice(p);
 
+  double _priceFromScan(Map<String, dynamic> res, Map<String, dynamic> product) {
+    final fromRes = res['effectivePrice'];
+    if (fromRes != null && '$fromRes'.isNotEmpty) return parseMoney('$fromRes');
+    final fromProduct = product['effectivePrice'];
+    if (fromProduct != null && '$fromProduct'.isNotEmpty) return parseMoney('$fromProduct');
+    return _unitSalePrice(product);
+  }
+
+  Future<void> _openScanner({bool requestCamera = false}) async {
+    if (requestCamera) {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        if (!mounted) return;
+        setState(() {
+          _scanStatus = 'Camera permission denied — type or paste SKU below';
+          _scannerOpen = false;
+        });
+        _manualScanFocus.requestFocus();
+        return;
+      }
+    }
+
+    _scannerController?.dispose();
+    _scannerController = MobileScannerController(
+      detectionSpeed: DetectionSpeed.noDuplicates,
+      facing: CameraFacing.back,
+      formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _scannerOpen = true;
+      _scanStatus = null;
+    });
+  }
+
+  void _closeScanner() {
+    _scannerController?.dispose();
+    _scannerController = null;
+    if (!mounted) return;
+    setState(() => _scannerOpen = false);
+  }
+
   Future<void> _handleScan(String raw) async {
-    final code = raw.trim();
+    final code = parseProductScanCode(raw);
     if (code.isEmpty || _scanProcessing) return;
+
+    final now = DateTime.now();
+    if (_lastScannedCode == code &&
+        _lastScannedAt != null &&
+        now.difference(_lastScannedAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastScannedCode = code;
+    _lastScannedAt = now;
+
     setState(() {
       _scanProcessing = true;
       _scanStatus = null;
@@ -126,17 +188,18 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       final res = await api.scanProduct(code);
       final product = (res['product'] as Map<String, dynamic>?) ?? res;
       if (!mounted) return;
-      _addToCart(product);
+      _addToCart(product, unitPrice: _priceFromScan(res, product));
       await HapticFeedback.lightImpact();
       setState(() {
-        _scanStatus = 'Added: ${product['name']}';
-        _scannerOpen = false;
+        _scanStatus = 'Added: ${productDisplayName(product)}';
       });
+      _closeScanner();
+      _manualScanInput.clear();
     } catch (e) {
       if (!mounted) return;
       await HapticFeedback.heavyImpact();
       setState(() {
-        _scanStatus = e is ApiError ? e.message : 'Product not found';
+        _scanStatus = e is ApiError ? e.message : 'Product not found for $code';
       });
     } finally {
       if (mounted) setState(() => _scanProcessing = false);
@@ -144,7 +207,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   void _onBarcodeDetected(BarcodeCapture capture) {
-    if (capture.barcodes.isEmpty) return;
+    if (capture.barcodes.isEmpty || _scanProcessing) return;
     final raw = capture.barcodes.first.rawValue;
     if (raw != null) _handleScan(raw);
   }
@@ -212,15 +275,17 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     _loadProducts();
   }
 
-  void _addToCart(Map<String, dynamic> p) {
+  void _addToCart(Map<String, dynamic> p, {double? unitPrice}) {
     final stockQty = int.tryParse('${p['stockQty']}') ?? 0;
     final id = '${p['id']}';
+    final name = productDisplayName(p);
+    final price = unitPrice ?? _unitSalePrice(p);
     setState(() {
       _cartError = null;
       final existing = _cart.where((c) => c.productId == id).toList();
       final alreadyInCart = existing.isEmpty ? 0 : existing.first.qty;
       if (alreadyInCart + 1 > stockQty) {
-        _cartError = 'Only $stockQty in stock for ${p['name']}';
+        _cartError = 'Only $stockQty in stock for $name';
         return;
       }
       if (existing.isNotEmpty) {
@@ -229,9 +294,9 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
         _cart.add(
           _CartLine(
             productId: id,
-            name: '${p['name']}',
+            name: name,
             qty: 1,
-            unitPrice: _unitSalePrice(p),
+            unitPrice: price,
             maxStock: stockQty,
             kind: '${p['kind']}',
           ),
@@ -310,16 +375,42 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                     borderRadius: BorderRadius.circular(AppRadii.input),
                     border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(AppIcons.barcode, size: 18, color: AppColors.accent),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          _scanStatus ?? 'Scanner ready — tap the scan button',
-                          style: const TextStyle(fontSize: 13, color: AppColors.text),
-                        ),
+                      Row(
+                        children: [
+                          const Icon(AppIcons.barcode, size: 18, color: AppColors.accent),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              _scanStatus ?? 'Scan barcode or enter SKU below',
+                              style: const TextStyle(fontSize: 13, color: AppColors.text),
+                            ),
+                          ),
+                        ],
                       ),
+                      if (widget.scanMode) ...[
+                        const SizedBox(height: AppSpacing.sm),
+                        TextField(
+                          controller: _manualScanInput,
+                          focusNode: _manualScanFocus,
+                          decoration: InputDecoration(
+                            hintText: 'SKU / barcode (e.g. SK-000009)',
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(AppRadii.input),
+                            ),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.keyboard_return),
+                              onPressed: () => _handleScan(_manualScanInput.text),
+                            ),
+                          ),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: _handleScan,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -358,10 +449,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
           right: 16,
           bottom: 16,
           child: FloatingActionButton(
-            onPressed: () => setState(() {
-              _scannerOpen = true;
-              _scanStatus = null;
-            }),
+            onPressed: () => _openScanner(requestCamera: true),
             backgroundColor: AppColors.accent,
             child: const Icon(AppIcons.barcode, color: Colors.white),
           ),
@@ -371,15 +459,49 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   Widget _buildScannerOverlay() {
+    final controller = _scannerController;
     return Material(
       color: Colors.black,
       child: SafeArea(
         child: Stack(
           children: [
-            MobileScanner(
-              controller: _scannerController,
-              onDetect: _onBarcodeDetected,
-            ),
+            if (controller != null)
+              MobileScanner(
+                controller: controller,
+                onDetect: _onBarcodeDetected,
+                errorBuilder: (context, error) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.white, size: 48),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Camera unavailable',
+                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${error.errorCode.name}\nUse SKU field on sale screen instead.',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: _closeScanner,
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              )
+            else
+              const Center(child: CircularProgressIndicator(color: Colors.white)),
             Positioned(
               top: 8,
               left: 8,
@@ -387,7 +509,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => setState(() => _scannerOpen = false),
+                    onPressed: _closeScanner,
                     icon: const Icon(Icons.close, color: Colors.white),
                   ),
                   const Expanded(

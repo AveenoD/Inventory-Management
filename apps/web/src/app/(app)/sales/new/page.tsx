@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   PRODUCT_KIND_LABELS,
   getEffectiveSalePrice,
+  getProductDisplayName,
   getProductDiscount,
   type ProductDto,
   type ProductKind,
@@ -88,7 +89,7 @@ export default function NewSalePage() {
     try {
       const { product } = await api.scanProduct(code);
       addToCart(product);
-      setScanStatus(`Added: ${product.name}`);
+      setScanStatus(`Added: ${getProductDisplayName(product)}`);
     } catch (e) {
       setScanStatus((e as Error).message || "Product not found");
     }
@@ -149,7 +150,7 @@ export default function NewSalePage() {
     const inCart = cart.find((c) => c.productId === p.id);
     const alreadyInCart = inCart?.qty ?? 0;
     if (alreadyInCart + quantity > p.stockQty) {
-      setCartError(`Only ${p.stockQty} in stock for ${p.name}`);
+      setCartError(`Only ${p.stockQty} in stock for ${getProductDisplayName(p)}`);
       return;
     }
     if (inCart) {
@@ -163,7 +164,7 @@ export default function NewSalePage() {
         ...prev,
         {
           productId: p.id,
-          name: p.name,
+          name: getProductDisplayName(p),
           qty: quantity,
           unitPrice: unitSalePrice(p),
           maxStock: p.stockQty,

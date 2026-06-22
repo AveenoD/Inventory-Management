@@ -69,7 +69,11 @@ export async function findProductByScanCode(userId: string, rawCode: string) {
   const code = rawCode.trim();
   if (!code) return null;
   const bySku = await prisma.product.findFirst({
-    where: { userId, isActive: true, sku: code },
+    where: {
+      userId,
+      isActive: true,
+      sku: { equals: code, mode: "insensitive" },
+    },
     include: productInclude,
   });
   if (bySku) return bySku;

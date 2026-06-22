@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
@@ -26,13 +28,31 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
   final _selected = <String, Map<String, dynamic>>{};
   List<Map<String, dynamic>> _products = [];
   String _search = '';
+  String _searchDebounced = '';
   bool _loading = true;
   String? _error;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _search = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() => _searchDebounced = _search.trim());
+      _load();
+    });
   }
 
   Future<void> _load() async {
@@ -44,7 +64,7 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
       final api = ref.read(apiServiceProvider);
       final res = await api.getProducts(
         page: 1,
-        search: _search.trim().isEmpty ? null : _search.trim(),
+        search: _searchDebounced.isEmpty ? null : _searchDebounced,
         limit: 100,
         excludeKinds: const ['REPAIR_PART'],
       );
@@ -168,8 +188,8 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
               Expanded(
                 child: SearchField(
                   value: _search,
-                  onChanged: (v) => setState(() => _search = v),
-                  placeholder: 'Search products…',
+                  onChanged: _onSearchChanged,
+                  placeholder: 'Search by name, model, SKU…',
                 ),
               ),
               const SizedBox(width: 8),
@@ -182,7 +202,18 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
           const SizedBox(height: 12),
           if (_loading) const PageLoader(message: 'Loading products…'),
           if (_error != null) Text(_error!, style: const TextStyle(color: AppColors.red)),
-          if (!_loading && _error == null)
+          if (!_loading && _error == null && _products.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                _searchDebounced.isEmpty
+                    ? 'No products in inventory yet.'
+                    : 'No products match "${_searchDebounced}".',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.muted),
+              ),
+            ),
+          if (!_loading && _error == null && _products.isNotEmpty)
             Expanded(
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
