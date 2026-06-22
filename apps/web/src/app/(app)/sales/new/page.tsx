@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   PRODUCT_KIND_LABELS,
@@ -52,12 +52,11 @@ const TABS: Array<{ key: "ALL" | ProductKind; label: string }> = [
 
 export default function NewSalePage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const scanMode = searchParams.get("scan") === "1";
   const qc = useQueryClient();
   const scanInputRef = useRef<HTMLInputElement>(null);
   const [scanBuffer, setScanBuffer] = useState("");
   const [scanStatus, setScanStatus] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [customerName, setCustomerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"CASH" | "UPI" | "CARD">("CASH");
@@ -77,21 +76,42 @@ export default function NewSalePage() {
   }, [search]);
 
   useEffect(() => {
-    if (!scanMode) return;
+    // Auto-focus scanner input on mount
     scanInputRef.current?.focus();
-  }, [scanMode]);
+  }, []);
+
+  // Auto-refocus scanner input when it loses focus (so scanner gun always works)
+  useEffect(() => {
+    const input = scanInputRef.current;
+    if (!input) return;
+    const handleBlur = () => {
+      // Re-focus after short delay to avoid interfering with intentional clicks
+      setTimeout(() => {
+        if (document.activeElement?.tagName !== "INPUT" &&
+            document.activeElement?.tagName !== "TEXTAREA" &&
+            document.activeElement?.tagName !== "SELECT") {
+          input.focus();
+        }
+      }, 300);
+    };
+    input.addEventListener("blur", handleBlur);
+    return () => input.removeEventListener("blur", handleBlur);
+  }, []);
 
   async function handleScanSubmit(raw: string) {
     const code = raw.trim();
     if (!code) return;
     setScanStatus(null);
+    setScanSuccess(false);
     setCartError("");
     try {
       const { product } = await api.scanProduct(code);
       addToCart(product);
-      setScanStatus(`Added: ${getProductDisplayName(product)}`);
+      setScanStatus(`✓ Added: ${getProductDisplayName(product)}`);
+      setScanSuccess(true);
     } catch (e) {
       setScanStatus((e as Error).message || "Product not found");
+      setScanSuccess(false);
     }
     setScanBuffer("");
     scanInputRef.current?.focus();
@@ -197,7 +217,8 @@ export default function NewSalePage() {
       )}
       {!isPending && !error && (
         <div className="pos-shell">
-          {scanMode && (
+          <div className="pos-left">
+            {/* Scanner gun input — always visible */}
             <div className="pos-scan-banner">
               <div>
                 <strong>
@@ -205,9 +226,18 @@ export default function NewSalePage() {
                   Scanner ready
                 </strong>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  Scan barcode with USB gun — item adds to cart automatically.
+                  Scan barcode with USB gun or type SKU — item adds to cart automatically.
                 </div>
-                {scanStatus && <div style={{ fontSize: 12, marginTop: 4 }}>{scanStatus}</div>}
+                {scanStatus && (
+                  <div style={{
+                    fontSize: 12,
+                    marginTop: 4,
+                    fontWeight: 600,
+                    color: scanSuccess ? "var(--green, #16a34a)" : "var(--red, #dc2626)",
+                  }}>
+                    {scanStatus}
+                  </div>
+                )}
               </div>
               <input
                 ref={scanInputRef}
@@ -220,12 +250,11 @@ export default function NewSalePage() {
                     void handleScanSubmit(scanBuffer);
                   }
                 }}
+                placeholder="SKU / barcode (e.g. SK-000009)"
                 aria-label="Barcode scanner input"
                 autoComplete="off"
               />
             </div>
-          )}
-          <div className="pos-left">
             <div className="pos-tabs">
               {TABS.map((t) => (
                 <button

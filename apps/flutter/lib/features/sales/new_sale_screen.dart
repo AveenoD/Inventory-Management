@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,7 +111,11 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _scannerController?.dispose();
+    try {
+      _scannerController?.dispose();
+    } catch (_) {
+      // ignore dispose errors
+    }
     _manualScanInput.dispose();
     _manualScanFocus.dispose();
     _customer.dispose();
@@ -131,24 +136,39 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   Future<void> _openScanner({bool requestCamera = false}) async {
-    if (requestCamera) {
-      final status = await Permission.camera.request();
-      if (!status.isGranted) {
-        if (!mounted) return;
-        setState(() {
-          _scanStatus = 'Camera permission denied — type or paste SKU below';
-          _scannerOpen = false;
-        });
-        _manualScanFocus.requestFocus();
-        return;
+    if (requestCamera && !kIsWeb) {
+      try {
+        final status = await Permission.camera.request();
+        if (!status.isGranted) {
+          if (!mounted) return;
+          setState(() {
+            _scanStatus = 'Camera permission denied — type or paste SKU below';
+            _scannerOpen = false;
+          });
+          _manualScanFocus.requestFocus();
+          return;
+        }
+      } catch (_) {
+        // permission_handler may throw on unsupported platforms
       }
     }
 
-    _scannerController?.dispose();
+    try {
+      _scannerController?.dispose();
+    } catch (_) {
+      // ignore dispose errors from un-initialized controllers
+    }
     _scannerController = MobileScannerController(
       detectionSpeed: DetectionSpeed.noDuplicates,
       facing: CameraFacing.back,
-      formats: const [BarcodeFormat.code128, BarcodeFormat.qrCode],
+      formats: const [
+        BarcodeFormat.code128,
+        BarcodeFormat.qrCode,
+        BarcodeFormat.ean13,
+        BarcodeFormat.ean8,
+        BarcodeFormat.upcA,
+        BarcodeFormat.upcE,
+      ],
     );
 
     if (!mounted) return;
@@ -159,7 +179,11 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   void _closeScanner() {
-    _scannerController?.dispose();
+    try {
+      _scannerController?.dispose();
+    } catch (_) {
+      // ignore dispose errors
+    }
     _scannerController = null;
     if (!mounted) return;
     setState(() => _scannerOpen = false);
@@ -191,9 +215,9 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       _addToCart(product, unitPrice: _priceFromScan(res, product));
       await HapticFeedback.lightImpact();
       setState(() {
-        _scanStatus = 'Added: ${productDisplayName(product)}';
+        _scanStatus = '✓ Added: ${productDisplayName(product)}';
       });
-      _closeScanner();
+      // Keep camera open for continuous scanning — don't call _closeScanner()
       _manualScanInput.clear();
     } catch (e) {
       if (!mounted) return;
@@ -366,8 +390,8 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (widget.scanMode || _scanStatus != null)
-                Container(
+              // Always show scan banner with manual SKU input (works with scanner gun)
+              Container(
                   margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
@@ -385,32 +409,36 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                           Expanded(
                             child: Text(
                               _scanStatus ?? 'Scan barcode or enter SKU below',
-                              style: const TextStyle(fontSize: 13, color: AppColors.text),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _scanStatus != null && _scanStatus!.startsWith('✓')
+                                    ? Colors.green.shade700
+                                    : AppColors.text,
+                                fontWeight: _scanStatus != null ? FontWeight.w600 : FontWeight.normal,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      if (widget.scanMode) ...[
-                        const SizedBox(height: AppSpacing.sm),
-                        TextField(
-                          controller: _manualScanInput,
-                          focusNode: _manualScanFocus,
-                          decoration: InputDecoration(
-                            hintText: 'SKU / barcode (e.g. SK-000009)',
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(AppRadii.input),
-                            ),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.keyboard_return),
-                              onPressed: () => _handleScan(_manualScanInput.text),
-                            ),
+                      const SizedBox(height: AppSpacing.sm),
+                      TextField(
+                        controller: _manualScanInput,
+                        focusNode: _manualScanFocus,
+                        decoration: InputDecoration(
+                          hintText: 'SKU / barcode (e.g. SK-000009)',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(AppRadii.input),
                           ),
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: _handleScan,
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.keyboard_return),
+                            onPressed: () => _handleScan(_manualScanInput.text),
+                          ),
                         ),
-                      ],
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: _handleScan,
+                      ),
                     ],
                   ),
                 ),
@@ -478,9 +506,9 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                         children: [
                           const Icon(Icons.error_outline, color: Colors.white, size: 48),
                           const SizedBox(height: 12),
-                          Text(
+                          const Text(
                             'Camera unavailable',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
@@ -502,6 +530,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
               )
             else
               const Center(child: CircularProgressIndicator(color: Colors.white)),
+            // Top bar with close button
             Positioned(
               top: 8,
               left: 8,
@@ -510,7 +539,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                 children: [
                   IconButton(
                     onPressed: _closeScanner,
-                    icon: const Icon(Icons.close, color: Colors.white),
+                    icon: const Icon(Icons.close, color: Colors.white, size: 28),
                   ),
                   const Expanded(
                     child: Text(
@@ -523,6 +552,52 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                 ],
               ),
             ),
+            // Status banner at bottom — shows scan result
+            if (_scanStatus != null)
+              Positioned(
+                bottom: 24,
+                left: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _scanStatus!.startsWith('✓')
+                        ? Colors.green.shade700
+                        : Colors.red.shade700,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _scanStatus!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            // Cart count badge
+            if (_cart.isNotEmpty)
+              Positioned(
+                bottom: 80,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Cart: ${_cart.fold<int>(0, (s, c) => s + c.qty)} items',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
             if (_scanProcessing)
               const Center(
                 child: CircularProgressIndicator(color: Colors.white),

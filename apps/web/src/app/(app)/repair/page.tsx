@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   REPAIR_STATUS_LABELS,
@@ -18,7 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { FormModal } from "@/components/ui/form-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RowActionMenu } from "@/components/ui/row-action-menu";
-import { Calendar, Clock, IndianRupee, Search, Wrench } from "lucide-react";
+import { Calendar, Clock, IndianRupee, Search, Wrench, FileText } from "lucide-react";
 import { formatMoney, parseMoneyInput } from "@/lib/format";
 
 type Tab = "all" | "active" | "pending" | "delivered" | "unrepairable";
@@ -640,7 +641,17 @@ export default function RepairPage() {
                             </div>
                           ) : null}
                         </div>
-                        <div className="repair-actions-menu">
+                        <div className="repair-actions-menu" style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                          {r.status === "DELIVERED" || r.status === "REPAIRED_PENDING_PICKUP" ? (
+                            <Link
+                              href={`/repair/${r.id}/invoice`}
+                              className="icon-btn"
+                              title="Print invoice"
+                              aria-label="Print invoice"
+                            >
+                              <FileText size={16} />
+                            </Link>
+                          ) : null}
                           <RowActionMenu
                             open={openMenuId === r.id}
                             disabled={removeJob.isPending || editJob.isPending || updateStatus.isPending}

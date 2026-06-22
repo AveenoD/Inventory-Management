@@ -379,6 +379,26 @@ entriesRouter.get("/repair-jobs", async (req, res, next) => {
   }
 });
 
+entriesRouter.get("/repair-jobs/:jobId", async (req, res, next) => {
+  try {
+    await guard(req, req.user!.userId);
+    const mid = monthIdFromParams(req.params);
+    const job = await prisma.repairJob.findFirst({
+      where: { id: req.params.jobId, businessMonthId: mid },
+      include: {
+        parts: { include: { product: { select: { name: true } } } },
+      },
+    });
+    if (!job) {
+      res.status(404).json({ error: "Repair job not found" });
+      return;
+    }
+    res.json(mapRepairJobDto(job));
+  } catch (e) {
+    next(e);
+  }
+});
+
 entriesRouter.post("/repair-jobs/intake", async (req, res, next) => {
   try {
     await guard(req, req.user!.userId);

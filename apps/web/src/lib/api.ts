@@ -1,4 +1,4 @@
-import { createApiClient, ApiError } from "@sk-mobile/shared";
+import { createApiClient, ApiError, RepairJobDto } from "@sk-mobile/shared";
 import { getToken, clearToken } from "./auth";
 
 /** Render production API — used on Netlify / any non-localhost host */
@@ -207,6 +207,10 @@ export const api = {
     page?: number,
     opts?: Parameters<typeof client.getRepairJobs>[2],
   ) => withAuth(() => client.getRepairJobs(monthId, page, opts)),
+  getRepairJob: (monthId: string, jobId: string) =>
+    withAuth(() =>
+      requestJson<RepairJobDto>(`/api/v1/months/${monthId}/repair-jobs/${jobId}`),
+    ),
   createRepairIntake: (
     monthId: string,
     data: Parameters<typeof client.createRepairIntake>[1],

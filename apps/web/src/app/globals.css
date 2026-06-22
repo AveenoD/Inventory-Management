@@ -6028,7 +6028,9 @@ select {
 @media print {
   .no-print,
   .sidebar,
+  .sidebar-backdrop,
   .sidebar-overlay,
+  .mobile-topbar,
   .app-topbar,
   .dash-topbar {
     display: none !important;
@@ -6350,22 +6352,24 @@ select {
 }
 
 @media print {
-  body * {
-    visibility: hidden !important;
+  /* Hide the rest of the UI on the barcode page */
+  .qr-labels-toolbar,
+  .qr-labels-grid,
+  .qr-labels-pagination {
+    display: none !important;
   }
 
-  #product-label-print-root,
-  #product-label-print-root * {
-    visibility: visible !important;
+  /* Reset the hidden print area so it renders normally */
+  .qr-labels-print-area {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
-  #product-label-print-root {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: auto;
-    height: auto;
-    overflow: visible;
+  .product-label-sheet {
     display: flex;
     flex-wrap: wrap;
     gap: 2mm;
@@ -6379,6 +6383,5 @@ select {
 
   .product-label__barcode svg {
     max-width: 46mm !important;
-    visibility: visible !important;
   }
 }
