@@ -529,7 +529,7 @@ inventoryRouter.post("/products/batch-covers", async (req, res, next) => {
           });
         }
       }
-    });
+    }, { maxWait: 15000, timeout: 20000 });
 
     res.status(201).json({ success: true, count: createdIds.length, ids: createdIds });
   } catch (e) {

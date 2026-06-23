@@ -48,15 +48,18 @@ type PrismaTx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export async function allocateProductSku(userId: string, tx?: PrismaTx): Promise<string> {
   const client = tx ?? prisma;
-  const existing = await client.product.findMany({
-    where: { userId, sku: { not: null } },
+  const lastSkuProduct = await client.product.findFirst({
+    where: { userId, sku: { startsWith: 'SK-' } },
+    orderBy: { sku: 'desc' },
     select: { sku: true },
   });
+  
   let max = 0;
-  for (const row of existing) {
-    const m = row.sku?.match(/^SK-(\d+)$/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
+  if (lastSkuProduct?.sku) {
+    const m = lastSkuProduct.sku.match(/^SK-(\d+)$/);
+    if (m) max = parseInt(m[1], 10);
   }
+  
   for (let seq = max + 1; seq < max + 100000; seq++) {
     const sku = `SK-${String(seq).padStart(6, "0")}`;
     const taken = await client.product.findFirst({ where: { userId, sku } });
