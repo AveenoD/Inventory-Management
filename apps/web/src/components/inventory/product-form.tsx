@@ -68,9 +68,8 @@ export function ProductForm() {
   const [phoneModelId, setPhoneModelId] = useState("");
   const [newPhoneModel, setNewPhoneModel] = useState("");
   const [phoneModel, setPhoneModel] = useState("");
-  const [coverTypeId, setCoverTypeId] = useState("");
+  const [coverBatchRows, setCoverBatchRows] = useState<Record<string, { buy: string; sell: string; offer: string; qty: string }>>({});
   const [newCoverType, setNewCoverType] = useState("");
-  const [variantName, setVariantName] = useState("");
   const [partType, setPartType] = useState<string>(REPAIR_PART_TYPES[0]);
   const [buyPrice, setBuyPrice] = useState("");
   const [sellPrice, setSellPrice] = useState("");
@@ -103,7 +102,6 @@ export function ProductForm() {
     onSuccess: (pm) => {
       setPhoneModelId(pm.id);
       setNewPhoneModel("");
-      setCoverTypeId("");
       refetchPhoneModels();
       qc.invalidateQueries({ queryKey: ["phone-models"] });
       qc.invalidateQueries({ queryKey: ["cover-types"] });
@@ -113,7 +111,6 @@ export function ProductForm() {
   const addCoverType = useMutation({
     mutationFn: () => api.createCoverType(phoneModelId, newCoverType.trim()),
     onSuccess: (ct) => {
-      setCoverTypeId(ct.id);
       setNewCoverType("");
       refetchCoverTypes();
       qc.invalidateQueries({ queryKey: ["cover-types"] });
@@ -144,9 +141,9 @@ export function ProductForm() {
         categoryId: mode === "other_accessory" ? categoryId || undefined : undefined,
         phoneModelId: mode === "cover" && phoneModelId ? phoneModelId : undefined,
         phoneModel: mode === "repair" ? phoneModel : undefined,
-        coverTypeId: mode === "cover" ? coverTypeId : undefined,
+        coverTypeId: undefined,
         coverTypeName: undefined,
-        variantName: mode === "cover" ? variantName.trim() : undefined,
+        variantName: undefined,
         partType: mode === "repair" ? partType : undefined,
         buyPrice: parseFloat(buyPrice) || 0,
         sellPrice: parseFloat(sellPrice) || parseFloat(repairCharge) || 0,
@@ -171,13 +168,45 @@ export function ProductForm() {
     },
   });
 
+  const batchCreateCovers = useMutation({
+    mutationFn: () => {
+      const covers = Object.entries(coverBatchRows)
+        .filter(([_, row]) => {
+          const qty = parseInt(row.qty, 10);
+          return !Number.isNaN(qty) && qty > 0;
+        })
+        .map(([coverTypeId, row]) => ({
+          coverTypeId,
+          buyPrice: parseFloat(row.buy) || 0,
+          sellPrice: parseFloat(row.sell) || 0,
+          offerPrice: row.offer ? parseFloat(row.offer) : undefined,
+          openingStock: parseInt(row.qty, 10) || 0,
+        }));
+      
+      if (covers.length === 0) {
+        throw new Error("Please enter stock for at least one cover category.");
+      }
+
+      return api.createBatchCovers({
+        phoneModelId,
+        covers,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["covers-stats"] });
+      qc.invalidateQueries({ queryKey: ["phone-models"] });
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
+      router.push("/inventory");
+    },
+  });
+
   const phoneModelList = phoneModels?.data ?? [];
   const coverList = coverTypes?.data ?? [];
   const reservedCategoryNames = new Set(Object.values(PRODUCT_KIND_LABELS));
   const catList = (categories?.data ?? []).filter((c) => !reservedCategoryNames.has(c.name));
 
   const coverStep2Locked = !phoneModelId;
-  const coverStep3Locked = coverStep2Locked || !coverTypeId;
 
   function handleAddPhoneModel() {
     if (!newPhoneModel.trim()) return Promise.resolve();
@@ -199,8 +228,6 @@ export function ProductForm() {
     setFormError("");
     setCategoryId("");
     setPhoneModelId("");
-    setCoverTypeId("");
-    setVariantName("");
     setName("");
     setPhoneModel("");
     setNewPhoneModel("");
@@ -210,9 +237,21 @@ export function ProductForm() {
 
   function handlePhoneModelChange(id: string) {
     setPhoneModelId(id);
-    setCoverTypeId("");
+    setCoverBatchRows({});
     setNewCoverType("");
-    setVariantName("");
+  }
+
+  function handleBatchRowChange(coverId: string, field: "buy" | "sell" | "offer" | "qty", value: string) {
+    setCoverBatchRows((prev) => ({
+      ...prev,
+      [coverId]: {
+        buy: prev[coverId]?.buy ?? "",
+        sell: prev[coverId]?.sell ?? "",
+        offer: prev[coverId]?.offer ?? "",
+        qty: prev[coverId]?.qty ?? "",
+        [field]: value,
+      },
+    }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -224,14 +263,8 @@ export function ProductForm() {
         setFormError("Step 1: Select a phone model or add a new one.");
         return;
       }
-      if (!coverTypeId) {
-        setFormError("Step 2: Select a cover category or add a new one.");
-        return;
-      }
-      if (!variantName.trim()) {
-        setFormError("Step 3: Design name is required (e.g. Blue Marble, Plain Black).");
-        return;
-      }
+      batchCreateCovers.mutate();
+      return;
     }
 
     if (mode === "other_accessory" && !name.trim()) {
@@ -269,18 +302,15 @@ export function ProductForm() {
 
   function coverStepState(step: number): "done" | "current" | "pending" {
     if (step === 1) return phoneModelId ? "done" : "current";
-    if (step === 2) return coverTypeId ? "done" : phoneModelId ? "current" : "pending";
-    if (step === 3) return variantName.trim() ? "done" : coverTypeId ? "current" : "pending";
-    return variantName.trim() ? "current" : "pending";
+    if (step === 2) return phoneModelId ? "current" : "pending";
+    return "pending";
   }
 
   const coverSteps =
     mode === "cover"
       ? [
           { n: 1, label: "Phone model" },
-          { n: 2, label: "Cover category" },
-          { n: 3, label: "Design" },
-          { n: 4, label: "Price & stock" },
+          { n: 2, label: "Categories & stock" },
         ]
       : [];
 
@@ -346,35 +376,58 @@ export function ProductForm() {
             />
           </FormStep>
 
-          <FormStep step={2} title="Cover category" locked={coverStep2Locked}>
-            <select value={coverTypeId} onChange={(e) => setCoverTypeId(e.target.value)}>
-              <option value="">Select cover category</option>
-              {coverList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <InlineAddField
-              triggerLabel="Add new cover category"
-              placeholder="e.g. Matte, Ring Light"
-              value={newCoverType}
-              onChange={setNewCoverType}
-              onAdd={handleAddCoverType}
-              pending={addCoverType.isPending}
-              disabled={!phoneModelId}
-            />
-          </FormStep>
-
-          <FormStep step={3} title="Design / variant" locked={coverStep3Locked}>
-            <input
-              value={variantName}
-              onChange={(e) => setVariantName(e.target.value)}
-              placeholder="e.g. Blue Marble, Tiger Print, Plain Black"
-            />
-            <p className="muted form-step__hint">
-              Name auto: Model – Cover category – Design (e.g. Samsung J7 – Silicon – Blue Marble)
+          <FormStep step={2} title="Cover categories & stock" locked={coverStep2Locked}>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Enter stock and prices for the categories you want to add. Blank rows will be ignored.
             </p>
+            
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th style={{ width: "100px" }}>Buy Price</th>
+                    <th style={{ width: "100px" }}>MRP (Sell)</th>
+                    <th style={{ width: "100px" }}>Discount</th>
+                    <th style={{ width: "80px" }}>Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coverList.map((c) => {
+                    const row = coverBatchRows[c.id] || { buy: "", sell: "", offer: "", qty: "" };
+                    return (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight: 500 }}>{c.name}</td>
+                        <td>
+                          <input type="number" step="0.01" style={{ padding: "4px 8px" }} value={row.buy} onChange={e => handleBatchRowChange(c.id, "buy", e.target.value)} placeholder="0.00" />
+                        </td>
+                        <td>
+                          <input type="number" step="0.01" style={{ padding: "4px 8px" }} value={row.sell} onChange={e => handleBatchRowChange(c.id, "sell", e.target.value)} placeholder="0.00" />
+                        </td>
+                        <td>
+                          <input type="number" step="0.01" style={{ padding: "4px 8px" }} value={row.offer} onChange={e => handleBatchRowChange(c.id, "offer", e.target.value)} placeholder="0.00" />
+                        </td>
+                        <td>
+                          <input type="number" style={{ padding: "4px 8px" }} value={row.qty} onChange={e => handleBatchRowChange(c.id, "qty", e.target.value)} placeholder="0" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: "16px" }}>
+              <InlineAddField
+                triggerLabel="Add new category"
+                placeholder="e.g. Transparent, Silicon"
+                value={newCoverType}
+                onChange={setNewCoverType}
+                onAdd={handleAddCoverType}
+                pending={addCoverType.isPending}
+                disabled={!phoneModelId}
+              />
+            </div>
           </FormStep>
         </>
       )}
@@ -458,49 +511,50 @@ export function ProductForm() {
         </>
       )}
 
-      <div className="form-step">
-        <div className="form-step__head">
-          <span className="form-step__num">{mode === "cover" ? 4 : 1}</span>
-          <span className="form-step__title">Price & stock</span>
-        </div>
-
-        <div className="form-row">
-          <div>
-            <label className="stat-label">
-              {mode === "repair" ? "Purchase cost (kitne me aaya)" : "Buy price"}
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={buyPrice}
-              onChange={(e) => setBuyPrice(e.target.value)}
-              required
-            />
+      {mode !== "cover" && (
+        <div className="form-step">
+          <div className="form-step__head">
+            <span className="form-step__num">1</span>
+            <span className="form-step__title">Price & stock</span>
           </div>
-          {mode === "repair" ? (
+
+          <div className="form-row">
             <div>
-              <label className="stat-label">Repair charge (customer se)</label>
+              <label className="stat-label">
+                {mode === "repair" ? "Purchase cost (kitne me aaya)" : "Buy price"}
+              </label>
               <input
                 type="number"
                 step="0.01"
-                value={repairCharge}
-                onChange={(e) => setRepairCharge(e.target.value)}
+                value={buyPrice}
+                onChange={(e) => setBuyPrice(e.target.value)}
                 required
               />
             </div>
-          ) : (
-            <div>
-              <label className="stat-label">MRP (sell price)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={sellPrice}
-                onChange={(e) => setSellPrice(e.target.value)}
-                required
-              />
-            </div>
-          )}
-        </div>
+            {mode === "repair" ? (
+              <div>
+                <label className="stat-label">Repair charge (customer se)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={repairCharge}
+                  onChange={(e) => setRepairCharge(e.target.value)}
+                  required
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="stat-label">MRP (sell price)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={sellPrice}
+                  onChange={(e) => setSellPrice(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+          </div>
 
         {mode !== "repair" && (
           <div className="form-row">
@@ -518,32 +572,33 @@ export function ProductForm() {
           </div>
         )}
 
-        <div className="form-row">
-          <div>
-            <label className="stat-label">Opening stock (quantity)</label>
-            <input
-              type="number"
-              min={0}
-              value={openingStock}
-              onChange={(e) => setOpeningStock(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <label className="stat-label">Min stock alert</label>
-            <input
-              type="number"
-              min={0}
-              value={minStock}
-              onChange={(e) => setMinStock(e.target.value)}
-              placeholder="0"
-            />
+          <div className="form-row">
+            <div>
+              <label className="stat-label">Opening stock (quantity)</label>
+              <input
+                type="number"
+                min={0}
+                value={openingStock}
+                onChange={(e) => setOpeningStock(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="stat-label">Min stock alert</label>
+              <input
+                type="number"
+                min={0}
+                value={minStock}
+                onChange={(e) => setMinStock(e.target.value)}
+                placeholder="0"
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {formError && <p className="error">{formError}</p>}
-      {create.error && <p className="error">{(create.error as Error).message}</p>}
+      {(create.error || batchCreateCovers.error) && <p className="error">{((create.error || batchCreateCovers.error) as Error).message}</p>}
       <div className="product-add-actions">
         <button
           type="button"
@@ -552,8 +607,8 @@ export function ProductForm() {
         >
           Cancel
         </button>
-        <button type="submit" disabled={create.isPending}>
-          {create.isPending ? "Saving…" : mode === "cover" ? "Save cover" : "Save product"}
+        <button type="submit" disabled={create.isPending || batchCreateCovers.isPending}>
+          {create.isPending || batchCreateCovers.isPending ? "Saving…" : mode === "cover" ? "Save all covers" : "Save product"}
         </button>
       </div>
         </div>

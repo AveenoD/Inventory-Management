@@ -37,6 +37,17 @@ export const createPhoneModelSchema = z.object({
   name: z.string().min(1).max(120),
 });
 
+export const batchCreateCoversSchema = z.object({
+  phoneModelId: z.string().min(1),
+  covers: z.array(z.object({
+    coverTypeId: z.string().min(1),
+    buyPrice: z.number().min(0),
+    sellPrice: z.number().min(0),
+    offerPrice: z.number().min(0).optional(),
+    openingStock: z.number().int().min(0).default(0),
+  })).min(1),
+});
+
 export const createCoverTypeSchema = z.object({
   name: z.string().min(1).max(80),
   phoneModelId: z.string().min(1),
@@ -71,6 +82,7 @@ export const createSaleSchema = z.object({
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type BatchCreateCoversInput = z.infer<typeof batchCreateCoversSchema>;
 export type StockInInput = z.infer<typeof stockInSchema>;
 export type CreateSaleInput = z.infer<typeof createSaleSchema>;
 

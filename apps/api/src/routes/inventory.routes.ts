@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createProductSchema,
+  batchCreateCoversSchema,
   createCoverTypeSchema,
   createPhoneModelSchema,
   updateProductSchema,
@@ -451,12 +452,84 @@ inventoryRouter.post("/products", async (req, res, next) => {
           },
         });
       }
+        
       return tx.product.findFirstOrThrow({
         where: { id: created.id },
         include: productInclude,
       });
     });
     res.status(201).json(mapProductDto(product));
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.post("/products/batch-covers", async (req, res, next) => {
+  try {
+    const body = batchCreateCoversSchema.parse(req.body);
+    const userId = req.user!.userId;
+    const kind = "MOBILE_ACCESSORY";
+
+    const cat = await ensureCategoryForKind(userId, kind);
+    const pm = await resolvePhoneModel(userId, body.phoneModelId, undefined);
+    if (!pm) {
+      res.status(400).json({ error: "Phone model not found" });
+      return;
+    }
+
+    const createdIds: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const cover of body.covers) {
+        const ct = await resolveCoverType(userId, pm.id, cover.coverTypeId, undefined);
+        if (!ct) continue;
+
+        const name = buildProductName({
+          kind,
+          phoneModel: pm.name,
+          coverTypeName: ct.name,
+        });
+
+        const buyPriceFixed = fmt(d(cover.buyPrice));
+        const sellPriceFixed = fmt(d(cover.sellPrice));
+        const offerPriceFixed = cover.offerPrice !== undefined ? fmt(d(cover.offerPrice)) : null;
+
+        const sku = await allocateProductSku(userId, tx);
+        const created = await tx.product.create({
+          data: {
+            userId,
+            kind,
+            name,
+            sku,
+            categoryId: cat.id,
+            phoneModel: pm.name,
+            phoneModelId: pm.id,
+            coverTypeId: ct.id,
+            buyPrice: buyPriceFixed,
+            sellPrice: sellPriceFixed,
+            offerPrice: offerPriceFixed,
+            minStock: 0,
+            stockQty: cover.openingStock,
+          },
+        });
+        
+        createdIds.push(created.id);
+
+        if (cover.openingStock > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: created.id,
+              type: "IN",
+              quantity: cover.openingStock,
+              unitCost: buyPriceFixed,
+              note: "Opening stock",
+            },
+          });
+        }
+      }
+    });
+
+    res.status(201).json({ success: true, count: createdIds.length, ids: createdIds });
   } catch (e) {
     next(e);
   }

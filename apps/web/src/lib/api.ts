@@ -140,6 +140,13 @@ export const api = {
   getCoverProductStats: () => withAuth(() => client.getCoverProductStats()),
   createProduct: (data: Parameters<typeof client.createProduct>[0]) =>
     withAuth(() => client.createProduct(data)),
+  createBatchCovers: (data: import("@sk-mobile/shared").BatchCreateCoversInput) =>
+    withAuth(() =>
+      requestJson<{ success: boolean; count: number; ids: string[] }>(
+        `/api/v1/inventory/products/batch-covers`,
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    ),
   getProduct: (id: string) =>
     withAuth(() =>
       requestJson<import("@sk-mobile/shared").ProductDto>(
