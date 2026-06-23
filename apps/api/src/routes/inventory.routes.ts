@@ -481,7 +481,9 @@ inventoryRouter.post("/products/batch-covers", async (req, res, next) => {
 
     await prisma.$transaction(async (tx) => {
       for (const cover of body.covers) {
-        const ct = await resolveCoverType(userId, pm.id, cover.coverTypeId, undefined);
+        const ct = await tx.coverType.findFirst({
+          where: { id: cover.coverTypeId, userId, phoneModelId: pm.id }
+        });
         if (!ct) continue;
 
         const name = buildProductName({
@@ -508,7 +510,7 @@ inventoryRouter.post("/products/batch-covers", async (req, res, next) => {
             buyPrice: buyPriceFixed,
             sellPrice: sellPriceFixed,
             offerPrice: offerPriceFixed,
-            minStock: 0,
+            minStock: 2,
             stockQty: cover.openingStock,
           },
         });
