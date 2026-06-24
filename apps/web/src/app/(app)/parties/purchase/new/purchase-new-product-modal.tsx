@@ -14,26 +14,24 @@ import { parseMoneyInput } from "@/lib/format";
 
 type PurchaseProductKind = Extract<
   ProductKind,
-  "MOBILE" | "MOBILE_ACCESSORY" | "SPEAKERS_SOUND" | "CHARGER_CABLE"
+  "ANDROID_MOBILE" | "BASIC_MOBILE" | "MOBILE_ACCESSORY"
 >;
 
 const KIND_OPTIONS: PurchaseProductKind[] = [
-  "MOBILE",
   "MOBILE_ACCESSORY",
-  "SPEAKERS_SOUND",
-  "CHARGER_CABLE",
+  "ANDROID_MOBILE",
+  "BASIC_MOBILE",
 ];
 
 function defaultKindFromTab(tab: ProductKind | "ALL"): PurchaseProductKind {
   if (tab === "ALL") return "MOBILE_ACCESSORY";
   if (tab === "REPAIR_PART") return "MOBILE_ACCESSORY";
-  return tab;
+  return tab as PurchaseProductKind;
 }
 
 function namePlaceholder(kind: PurchaseProductKind): string {
-  if (kind === "MOBILE") return "e.g. Samsung A15 4/64";
-  if (kind === "SPEAKERS_SOUND") return "e.g. Boat Rockerz 255";
-  if (kind === "CHARGER_CABLE") return "e.g. 25W Type-C Cable";
+  if (kind === "ANDROID_MOBILE") return "e.g. Samsung A15 4/64";
+  if (kind === "BASIC_MOBILE") return "e.g. Nokia 105";
   return "e.g. Sandisk 64GB Pendrive";
 }
 

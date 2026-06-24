@@ -24,19 +24,17 @@ type InventoryFilter =
   | "ALL"
   | "COVERS"
   | "OTHER_ACCESSORIES"
-  | "MOBILE"
-  | "REPAIR_PART"
-  | "SPEAKERS_SOUND"
-  | "CHARGER_CABLE";
+  | "ANDROID_MOBILE"
+  | "BASIC_MOBILE"
+  | "REPAIR_PART";
 
 const FILTER_TABS: Array<{ id: InventoryFilter; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "COVERS", label: "Covers" },
   { id: "OTHER_ACCESSORIES", label: "Accessories" },
-  { id: "MOBILE", label: "Mobile" },
+  { id: "ANDROID_MOBILE", label: "Android Mobile" },
+  { id: "BASIC_MOBILE", label: "Basic Mobile" },
   { id: "REPAIR_PART", label: "Repair" },
-  { id: "SPEAKERS_SOUND", label: "Speakers" },
-  { id: "CHARGER_CABLE", label: "Chargers" },
 ];
 
 const PAGE_SIZE = 25;
@@ -61,7 +59,7 @@ function addProductMode(filter: InventoryFilter) {
   if (filter === "COVERS") return "cover";
   if (filter === "OTHER_ACCESSORIES") return "accessory";
   if (filter === "REPAIR_PART") return "repair";
-  if (filter === "MOBILE" || filter === "SPEAKERS_SOUND" || filter === "CHARGER_CABLE")
+  if (filter === "ANDROID_MOBILE" || filter === "BASIC_MOBILE")
     return "device";
   return "";
 }

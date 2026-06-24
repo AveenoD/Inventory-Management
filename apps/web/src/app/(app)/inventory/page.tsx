@@ -22,19 +22,17 @@ type InventoryFilter =
   | "ALL"
   | "COVERS"
   | "OTHER_ACCESSORIES"
-  | "MOBILE"
-  | "REPAIR_PART"
-  | "SPEAKERS_SOUND"
-  | "CHARGER_CABLE";
+  | "ANDROID_MOBILE"
+  | "BASIC_MOBILE"
+  | "REPAIR_PART";
 
 const FILTER_TABS: Array<{ id: InventoryFilter; label: string }> = [
   { id: "ALL", label: "All" },
   { id: "COVERS", label: "Covers" },
   { id: "OTHER_ACCESSORIES", label: "Accessories" },
-  { id: "MOBILE", label: "Mobile" },
+  { id: "ANDROID_MOBILE", label: "Android Mobile" },
+  { id: "BASIC_MOBILE", label: "Basic Mobile" },
   { id: "REPAIR_PART", label: "Repair" },
-  { id: "SPEAKERS_SOUND", label: "Speakers" },
-  { id: "CHARGER_CABLE", label: "Chargers" },
 ];
 
 function productSubline(p: ProductDto, filter: InventoryFilter): string | null {
@@ -75,7 +73,7 @@ function addProductHref(filter: InventoryFilter) {
   if (filter === "COVERS") return "/inventory/new?mode=cover";
   if (filter === "OTHER_ACCESSORIES") return "/inventory/new?mode=accessory";
   if (filter === "REPAIR_PART") return "/inventory/new?mode=repair";
-  if (filter === "MOBILE" || filter === "SPEAKERS_SOUND" || filter === "CHARGER_CABLE") {
+  if (filter === "ANDROID_MOBILE" || filter === "BASIC_MOBILE") {
     return "/inventory/new?mode=device";
   }
   return "/inventory/new";

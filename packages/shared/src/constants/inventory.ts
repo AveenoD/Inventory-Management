@@ -1,19 +1,17 @@
 export const PRODUCT_KINDS = [
-  "MOBILE",
+  "ANDROID_MOBILE",
+  "BASIC_MOBILE",
   "MOBILE_ACCESSORY",
   "REPAIR_PART",
-  "SPEAKERS_SOUND",
-  "CHARGER_CABLE",
 ] as const;
 
 export type ProductKind = (typeof PRODUCT_KINDS)[number];
 
 export const PRODUCT_KIND_LABELS: Record<ProductKind, string> = {
-  MOBILE: "Mobile",
+  ANDROID_MOBILE: "Android Mobile",
+  BASIC_MOBILE: "Basic Mobile",
   MOBILE_ACCESSORY: "Mobile Accessories",
   REPAIR_PART: "Repairing Accessory",
-  SPEAKERS_SOUND: "Speakers / Sound",
-  CHARGER_CABLE: "Charger & Cable",
 };
 
 export const DEFAULT_COVER_TYPES = [

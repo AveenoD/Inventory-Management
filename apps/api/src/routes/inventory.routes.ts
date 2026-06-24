@@ -394,7 +394,7 @@ inventoryRouter.post("/products", async (req, res, next) => {
     }
 
     if (
-      (kind === "MOBILE" || kind === "SPEAKERS_SOUND" || kind === "CHARGER_CABLE") &&
+      (kind === "ANDROID_MOBILE" || kind === "BASIC_MOBILE") &&
       !body.name?.trim()
     ) {
       res.status(400).json({ error: "Product name is required" });

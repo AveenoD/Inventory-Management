@@ -19,16 +19,16 @@ import {
 import { colors, radii, spacing } from "@/theme/tokens";
 
 type AddProductMode = "cover" | "other_accessory" | "device" | "repair";
-type DeviceKind = Extract<ProductKind, "MOBILE" | "SPEAKERS_SOUND" | "CHARGER_CABLE">;
+type DeviceKind = Extract<ProductKind, "ANDROID_MOBILE" | "BASIC_MOBILE">;
 
 const MODES: Array<{ id: AddProductMode; label: string; hint?: string }> = [
   { id: "cover", label: "Mobile Cover", hint: "Model → cover category → design" },
   { id: "other_accessory", label: "Other Accessory" },
-  { id: "device", label: "Mobile / Audio / Cable" },
+  { id: "device", label: "Mobile" },
   { id: "repair", label: "Repair Part" },
 ];
 
-const DEVICE_KINDS: DeviceKind[] = ["MOBILE", "SPEAKERS_SOUND", "CHARGER_CABLE"];
+const DEVICE_KINDS: DeviceKind[] = ["ANDROID_MOBILE", "BASIC_MOBILE"];
 
 function parseMode(value: string | undefined): AddProductMode {
   if (value === "accessory" || value === "other_accessory") return "other_accessory";
@@ -43,7 +43,7 @@ export default function NewProductScreen() {
   const { mode: modeParam } = useLocalSearchParams<{ mode?: string }>();
 
   const [mode, setMode] = useState<AddProductMode>(() => parseMode(modeParam));
-  const [deviceKind, setDeviceKind] = useState<DeviceKind>("MOBILE");
+  const [deviceKind, setDeviceKind] = useState<DeviceKind>("ANDROID_MOBILE");
   const [categoryId, setCategoryId] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [name, setName] = useState("");

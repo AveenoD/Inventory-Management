@@ -13,16 +13,16 @@ import { InlineAddField } from "@/components/inventory/inline-add-field";
 import { Edit2, Trash2, ChevronDown } from "lucide-react";
 
 type AddProductMode = "cover" | "other_accessory" | "device" | "repair";
-type DeviceKind = Extract<ProductKind, "MOBILE" | "SPEAKERS_SOUND" | "CHARGER_CABLE">;
+type DeviceKind = Extract<ProductKind, "ANDROID_MOBILE" | "BASIC_MOBILE">;
 
 const MODES: Array<{ id: AddProductMode; label: string; hint: string }> = [
   { id: "cover", label: "Mobile Cover", hint: "Model → cover category → design" },
   { id: "other_accessory", label: "Other Accessory", hint: "Pendrive, earphone, glass…" },
-  { id: "device", label: "Mobile / Audio / Cable", hint: "Phones, speakers, chargers" },
+  { id: "device", label: "Mobile", hint: "Android / Basic Mobile" },
   { id: "repair", label: "Repair Part", hint: "Display, battery, charging pin…" },
 ];
 
-const DEVICE_KINDS: DeviceKind[] = ["MOBILE", "SPEAKERS_SOUND", "CHARGER_CABLE"];
+const DEVICE_KINDS: DeviceKind[] = ["ANDROID_MOBILE", "BASIC_MOBILE"];
 
 function parseInitialMode(value: string | null): AddProductMode {
   if (value === "accessory" || value === "other_accessory") return "other_accessory";
@@ -184,7 +184,7 @@ export function ProductForm() {
   const [editModal, setEditModal] = useState<{type: "category" | "phoneModel" | "coverType", id: string, name: string} | null>(null);
   const [deleteModal, setDeleteModal] = useState<{type: "category" | "phoneModel" | "coverType", id: string, name: string} | null>(null);
   const [editName, setEditName] = useState("");
-  const [deviceKind, setDeviceKind] = useState<DeviceKind>("MOBILE");
+  const [deviceKind, setDeviceKind] = useState<DeviceKind>("ANDROID_MOBILE");
   const [categoryId, setCategoryId] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [name, setName] = useState("");
@@ -465,11 +465,9 @@ export function ProductForm() {
   }
 
   const deviceNamePlaceholder =
-    deviceKind === "SPEAKERS_SOUND"
-      ? "e.g. Boat Rockerz 255"
-      : deviceKind === "CHARGER_CABLE"
-        ? "e.g. 25W Type-C Cable"
-        : "e.g. Samsung A15 4/64";
+    deviceKind === "BASIC_MOBILE"
+      ? "e.g. Nokia 105"
+      : "e.g. Samsung A15 4/64";
 
   function coverStepState(step: number): "done" | "current" | "pending" {
     if (step === 1) return phoneModelId ? "done" : "current";

@@ -21,18 +21,16 @@ const _filterTabs = <({String id, String label})>[
   (id: 'ALL', label: 'All'),
   (id: 'COVERS', label: 'Covers'),
   (id: 'OTHER_ACCESSORIES', label: 'Accessories'),
-  (id: 'MOBILE', label: 'Mobile'),
+  (id: 'ANDROID_MOBILE', label: 'Android Mobile'),
+  (id: 'BASIC_MOBILE', label: 'Basic Mobile'),
   (id: 'REPAIR_PART', label: 'Repair'),
-  (id: 'SPEAKERS_SOUND', label: 'Speakers'),
-  (id: 'CHARGER_CABLE', label: 'Chargers'),
 ];
 
 const _kindLabels = <String, String>{
-  'MOBILE': 'Mobile',
+  'ANDROID_MOBILE': 'Android Mobile',
+  'BASIC_MOBILE': 'Basic Mobile',
   'MOBILE_ACCESSORY': 'Mobile Accessories',
   'REPAIR_PART': 'Repairing Accessory',
-  'SPEAKERS_SOUND': 'Speakers / Sound',
-  'CHARGER_CABLE': 'Charger & Cable',
 };
 
 class _EditDraft {
@@ -72,9 +70,8 @@ String? _addProductMode(String filter) {
       return 'accessory';
     case 'REPAIR_PART':
       return 'repair';
-    case 'MOBILE':
-    case 'SPEAKERS_SOUND':
-    case 'CHARGER_CABLE':
+    case 'ANDROID_MOBILE':
+    case 'BASIC_MOBILE':
       return 'device';
     default:
       return null;

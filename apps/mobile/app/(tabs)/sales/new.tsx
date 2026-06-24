@@ -33,10 +33,9 @@ const EXCLUDE_KINDS: ProductKind[] = ["REPAIR_PART"];
 
 const TABS: Array<{ key: "ALL" | ProductKind; label: string }> = [
   { key: "ALL", label: "All" },
-  { key: "MOBILE", label: "Mobile" },
+  { key: "ANDROID_MOBILE", label: "Android Mobile" },
+  { key: "BASIC_MOBILE", label: "Basic Mobile" },
   { key: "MOBILE_ACCESSORY", label: "Accessories" },
-  { key: "SPEAKERS_SOUND", label: "Speakers" },
-  { key: "CHARGER_CABLE", label: "Charger" },
 ];
 
 function unitSalePrice(p: ProductDto) {

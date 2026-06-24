@@ -25,18 +25,16 @@ const _pageSize = 20;
 
 const _tabs = <({String key, String label})>[
   (key: 'ALL', label: 'All'),
-  (key: 'MOBILE', label: 'Mobile'),
+  (key: 'ANDROID_MOBILE', label: 'Android Mobile'),
+  (key: 'BASIC_MOBILE', label: 'Basic Mobile'),
   (key: 'MOBILE_ACCESSORY', label: 'Accessories'),
-  (key: 'SPEAKERS_SOUND', label: 'Speakers'),
-  (key: 'CHARGER_CABLE', label: 'Charger'),
 ];
 
 const _kindLabels = <String, String>{
-  'MOBILE': 'Mobile',
+  'ANDROID_MOBILE': 'Android Mobile',
+  'BASIC_MOBILE': 'Basic Mobile',
   'MOBILE_ACCESSORY': 'Mobile Accessories',
   'REPAIR_PART': 'Repairing Accessory',
-  'SPEAKERS_SOUND': 'Speakers / Sound',
-  'CHARGER_CABLE': 'Charger & Cable',
 };
 
 class _CartLine {

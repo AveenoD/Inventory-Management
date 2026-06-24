@@ -15,11 +15,10 @@ enum StockMovementType {
 }
 
 enum ProductKind {
-  MOBILE
+  ANDROID_MOBILE
+  BASIC_MOBILE
   MOBILE_ACCESSORY
   REPAIR_PART
-  SPEAKERS_SOUND
-  CHARGER_CABLE
 }
 
 enum RepairJobStatus {
