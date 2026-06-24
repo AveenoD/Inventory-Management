@@ -116,8 +116,7 @@ async function computeDashboard(businessMonthId: string): Promise<DashboardRespo
   const totalExpense = d(expenseAgg._sum.total ?? 0);
   const totalWithdrawal = d(withdrawalAgg._sum.total ?? 0);
   const totalDamage = d(damageAgg._sum.amount ?? 0);
-  const netProfit = openingBalance
-    .plus(totalIncome)
+  const netProfit = totalIncome
     .minus(totalExpense)
     .minus(totalWithdrawal)
     .minus(totalDamage);

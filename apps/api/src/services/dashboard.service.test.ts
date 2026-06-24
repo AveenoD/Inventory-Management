@@ -9,7 +9,7 @@ const EXCEL = {
   totalExpense: "1139.00",
   totalWithdrawal: "110500.00",
   totalDamage: "80.00",
-  netProfit: "925633.03",
+  netProfit: "15633.03",
   rechargeTransferProfit: "49142.03",
   repairProfit: "39325.00",
   mobileProfit: "38885.00",
@@ -25,8 +25,7 @@ describe("dashboard formulas (Excel parity)", () => {
   });
 
   it("computes net profit", () => {
-    const net = d(EXCEL.openingBalance)
-      .plus(d(EXCEL.totalIncome))
+    const net = d(EXCEL.totalIncome)
       .minus(d(EXCEL.totalExpense))
       .minus(d(EXCEL.totalWithdrawal))
       .minus(d(EXCEL.totalDamage));
