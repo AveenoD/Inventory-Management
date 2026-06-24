@@ -196,6 +196,32 @@ export const api = {
         method: "DELETE",
       }),
     ),
+  updatePhoneModel: (id: string, name: string) =>
+    withAuth(() =>
+      requestJson<{ id: string; name: string }>(`/api/v1/inventory/phone-models/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    ),
+  deletePhoneModel: (id: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/inventory/phone-models/${id}`, {
+        method: "DELETE",
+      }),
+    ),
+  updateCoverType: (id: string, name: string) =>
+    withAuth(() =>
+      requestJson<{ id: string; name: string }>(`/api/v1/inventory/cover-types/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    ),
+  deleteCoverType: (id: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/inventory/cover-types/${id}`, {
+        method: "DELETE",
+      }),
+    ),
   getRechargeEntries: (monthId: string, page?: number, date?: string, limit?: number) =>
     withAuth(() => client.getRechargeEntries(monthId, page, date, limit)),
   createRechargeEntry: (

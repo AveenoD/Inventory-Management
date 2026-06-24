@@ -54,24 +54,23 @@ function FormStep({
   );
 }
 
-function CustomCategorySelect({
+function CustomDropdownSelect({
   value,
   onChange,
   options,
   onEdit,
   onDelete,
+  placeholder = "Select an option",
 }: {
   value: string;
   onChange: (val: string) => void;
   options: { id: string; name: string }[];
   onEdit: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+  placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [editingCat, setEditingCat] = useState<{id: string, name: string} | null>(null);
-  const [editName, setEditName] = useState("");
-  const [deletingCat, setDeletingCat] = useState<{id: string, name: string} | null>(null);
   
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -98,7 +97,7 @@ function CustomCategorySelect({
         }}
         onClick={() => setOpen(!open)}
       >
-        {value === "" ? "General accessory" : options.find(o => o.id === value)?.name || "General accessory"}
+        {value === "" ? placeholder : options.find(o => o.id === value)?.name || placeholder}
         <ChevronDown size={16} />
       </div>
       {open && (
@@ -123,7 +122,7 @@ function CustomCategorySelect({
             onClick={() => { onChange(""); setOpen(false); }}
             className="dropdown-item"
           >
-            General accessory
+            {placeholder}
           </div>
           {options.map((opt) => (
             <div
@@ -145,11 +144,10 @@ function CustomCategorySelect({
                   style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", padding: 0 }}
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    setEditName(opt.name);
-                    setEditingCat({ id: opt.id, name: opt.name }); 
+                    onEdit(opt.id, opt.name);
                     setOpen(false); 
                   }}
-                  title="Edit category"
+                  title="Edit"
                 >
                   <Edit2 size={16} />
                 </button>
@@ -158,62 +156,16 @@ function CustomCategorySelect({
                   style={{ background: "none", border: "none", color: "#e11d48", cursor: "pointer", padding: 0 }}
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    setDeletingCat({ id: opt.id, name: opt.name }); 
+                    onDelete(opt.id, opt.name);
                     setOpen(false); 
                   }}
-                  title="Delete category"
+                  title="Delete"
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Edit Modal */}
-      {editingCat && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600 }}>Edit Category</h3>
-            <input
-              type="text"
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "20px" }}
-              autoFocus
-            />
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-              <button className="secondary" onClick={() => setEditingCat(null)}>Cancel</button>
-              <button onClick={() => {
-                if (editName.trim() && editName.trim() !== editingCat.name) {
-                  onEdit(editingCat.id, editName.trim());
-                }
-                setEditingCat(null);
-              }}>Save Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Modal */}
-      {deletingCat && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
-            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600, color: "#e11d48" }}>Delete Category</h3>
-            <p style={{ marginBottom: "20px", color: "var(--muted)", lineHeight: 1.5 }}>
-              Are you sure you want to permanently delete <strong>{deletingCat.name}</strong>? 
-              <br/><br/>
-              Products in this category will be moved to "General accessory". This action cannot be undone.
-            </p>
-            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
-              <button className="secondary" onClick={() => setDeletingCat(null)}>Cancel</button>
-              <button style={{ background: "#e11d48" }} onClick={() => {
-                onDelete(deletingCat.id);
-                setDeletingCat(null);
-              }}>Delete</button>
-            </div>
-          </div>
         </div>
       )}
     </div>
@@ -228,6 +180,10 @@ export function ProductForm() {
   const [mode, setMode] = useState<AddProductMode>(() =>
     parseInitialMode(searchParams.get("mode")),
   );
+
+  const [editModal, setEditModal] = useState<{type: "category" | "phoneModel" | "coverType", id: string, name: string} | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{type: "category" | "phoneModel" | "coverType", id: string, name: string} | null>(null);
+  const [editName, setEditName] = useState("");
   const [deviceKind, setDeviceKind] = useState<DeviceKind>("MOBILE");
   const [categoryId, setCategoryId] = useState("");
   const [newCategory, setNewCategory] = useState("");
@@ -305,6 +261,39 @@ export function ProductForm() {
     onSuccess: () => {
       refetchCategories();
       setCategoryId("");
+    },
+  });
+
+  const editPhoneModel = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updatePhoneModel(id, name),
+    onSuccess: () => {
+      refetchPhoneModels();
+      qc.invalidateQueries({ queryKey: ["phone-models"] });
+    },
+  });
+
+  const removePhoneModel = useMutation({
+    mutationFn: (id: string) => api.deletePhoneModel(id),
+    onSuccess: () => {
+      refetchPhoneModels();
+      qc.invalidateQueries({ queryKey: ["phone-models"] });
+      setPhoneModelId("");
+    },
+  });
+
+  const editCoverType = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateCoverType(id, name),
+    onSuccess: () => {
+      refetchCoverTypes();
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
+    },
+  });
+
+  const removeCoverType = useMutation({
+    mutationFn: (id: string) => api.deleteCoverType(id),
+    onSuccess: () => {
+      refetchCoverTypes();
+      qc.invalidateQueries({ queryKey: ["cover-types"] });
     },
   });
 
@@ -537,17 +526,19 @@ export function ProductForm() {
       {mode === "cover" && (
         <>
           <FormStep step={1} title="Phone model">
-            <select
+            <CustomDropdownSelect
               value={phoneModelId}
-              onChange={(e) => handlePhoneModelChange(e.target.value)}
-            >
-              <option value="">Select phone model</option>
-              {phoneModelList.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => handlePhoneModelChange(val)}
+              options={phoneModelList}
+              placeholder="Select phone model"
+              onEdit={(id, name) => {
+                setEditName(name);
+                setEditModal({ type: "phoneModel", id, name });
+              }}
+              onDelete={(id, name) => {
+                setDeleteModal({ type: "phoneModel", id, name });
+              }}
+            />
             <InlineAddField
               triggerLabel="Add new model"
               placeholder="e.g. Samsung J7, Redmi Note 13"
@@ -579,7 +570,34 @@ export function ProductForm() {
                     const row = coverBatchRows[c.id] || { buy: "", sell: "", offer: "", qty: "" };
                     return (
                       <tr key={c.id}>
-                        <td style={{ fontWeight: 500 }}>{c.name}</td>
+                        <td style={{ fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                          {c.name}
+                          <div className="category-actions" style={{ display: "flex", gap: "8px" }}>
+                            <button
+                              type="button"
+                              style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", padding: 0 }}
+                              onClick={(e) => { 
+                                e.preventDefault(); 
+                                setEditName(c.name);
+                                setEditModal({ type: "coverType", id: c.id, name: c.name }); 
+                              }}
+                              title="Edit"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              style={{ background: "none", border: "none", color: "#e11d48", cursor: "pointer", padding: 0 }}
+                              onClick={(e) => { 
+                                e.preventDefault(); 
+                                setDeleteModal({ type: "coverType", id: c.id, name: c.name }); 
+                              }}
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
                         <td>
                           <input type="number" step="0.01" style={{ padding: "4px 8px" }} value={row.buy} onChange={e => handleBatchRowChange(c.id, "buy", e.target.value)} placeholder="0.00" />
                         </td>
@@ -617,15 +635,17 @@ export function ProductForm() {
       {mode === "other_accessory" && (
         <>
           <label className="stat-label">Accessory category</label>
-          <CustomCategorySelect
+          <CustomDropdownSelect
             value={categoryId}
             onChange={setCategoryId}
             options={catList}
+            placeholder="Select a category"
             onEdit={(id, name) => {
-              editCategory.mutate({ id, name });
+              setEditName(name);
+              setEditModal({ type: "category", id, name });
             }}
-            onDelete={(id) => {
-              removeCategory.mutate(id);
+            onDelete={(id, name) => {
+              setDeleteModal({ type: "category", id, name });
             }}
           />
           <InlineAddField
@@ -798,6 +818,64 @@ export function ProductForm() {
       </div>
         </div>
       </div>
+
+      {/* Shared Edit Modal */}
+      {editModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600 }}>Edit {editModal.type === "phoneModel" ? "Phone Model" : editModal.type === "coverType" ? "Cover Type" : "Category"}</h3>
+            <input
+              type="text"
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "20px" }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button type="button" className="secondary" onClick={() => setEditModal(null)}>Cancel</button>
+              <button type="button" onClick={() => {
+                if (editName.trim() && editName.trim() !== editModal.name) {
+                  if (editModal.type === "category") {
+                    editCategory.mutate({ id: editModal.id, name: editName.trim() });
+                  } else if (editModal.type === "phoneModel") {
+                    editPhoneModel.mutate({ id: editModal.id, name: editName.trim() });
+                  } else if (editModal.type === "coverType") {
+                    editCoverType.mutate({ id: editModal.id, name: editName.trim() });
+                  }
+                }
+                setEditModal(null);
+              }}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shared Delete Modal */}
+      {deleteModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600, color: "#e11d48" }}>Delete {deleteModal.type === "phoneModel" ? "Phone Model" : deleteModal.type === "coverType" ? "Cover Type" : "Category"}</h3>
+            <p style={{ marginBottom: "20px", color: "var(--muted)", lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong>{deleteModal.name}</strong>? 
+              <br/><br/>
+              {deleteModal.type === "category" ? "Products in this category will be moved to 'General accessory'." : "Any associated products will have their reference to this removed."} This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button type="button" className="secondary" onClick={() => setDeleteModal(null)}>Cancel</button>
+              <button type="button" style={{ background: "#e11d48" }} onClick={() => {
+                if (deleteModal.type === "category") {
+                  removeCategory.mutate(deleteModal.id);
+                } else if (deleteModal.type === "phoneModel") {
+                  removePhoneModel.mutate(deleteModal.id);
+                } else if (deleteModal.type === "coverType") {
+                  removeCoverType.mutate(deleteModal.id);
+                }
+                setDeleteModal(null);
+              }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

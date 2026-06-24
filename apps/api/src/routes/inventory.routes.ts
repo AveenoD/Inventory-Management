@@ -960,3 +960,84 @@ inventoryRouter.delete("/categories/:id", async (req, res, next) => {
   }
 });
 
+
+inventoryRouter.patch("/phone-models/:id", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name ?? "").trim();
+    if (!name) {
+      res.status(400).json({ error: "Phone model name is required" });
+      return;
+    }
+    const existing = await prisma.phoneModel.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Phone model not found" });
+      return;
+    }
+    const pm = await prisma.phoneModel.update({
+      where: { id: req.params.id },
+      data: { name },
+    });
+    res.json({ id: pm.id, name: pm.name });
+  } catch (e: any) {
+    if (e.code === "P2002") {
+      res.status(409).json({ error: "A phone model with this name already exists" });
+    } else {
+      next(e);
+    }
+  }
+});
+
+inventoryRouter.delete("/phone-models/:id", async (req, res, next) => {
+  try {
+    const existing = await prisma.phoneModel.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Phone model not found" });
+      return;
+    }
+    await prisma.phoneModel.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
+inventoryRouter.patch("/cover-types/:id", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name ?? "").trim();
+    if (!name) {
+      res.status(400).json({ error: "Cover type name is required" });
+      return;
+    }
+    const existing = await prisma.coverType.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Cover type not found" });
+      return;
+    }
+    const ct = await prisma.coverType.update({
+      where: { id: req.params.id },
+      data: { name },
+    });
+    res.json({ id: ct.id, name: ct.name });
+  } catch (e: any) {
+    if (e.code === "P2002") {
+      res.status(409).json({ error: "A cover type with this name already exists" });
+    } else {
+      next(e);
+    }
+  }
+});
+
+inventoryRouter.delete("/cover-types/:id", async (req, res, next) => {
+  try {
+    const existing = await prisma.coverType.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Cover type not found" });
+      return;
+    }
+    await prisma.coverType.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+
