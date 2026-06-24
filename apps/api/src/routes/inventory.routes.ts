@@ -913,3 +913,50 @@ inventoryRouter.post("/categories", async (req, res, next) => {
     next(e);
   }
 });
+
+inventoryRouter.patch("/categories/:id", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name ?? "").trim();
+    if (!name) {
+      res.status(400).json({ error: "Category name is required" });
+      return;
+    }
+    const reserved = new Set(Object.values(PRODUCT_KIND_LABELS));
+    if (reserved.has(name)) {
+      res.status(400).json({ error: "This category name is reserved" });
+      return;
+    }
+    // Ensure ownership before updating
+    const existing = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
+    const cat = await prisma.category.update({
+      where: { id: req.params.id },
+      data: { name },
+    });
+    res.json({ id: cat.id, name: cat.name });
+  } catch (e: any) {
+    if (e.code === "P2002") {
+      res.status(409).json({ error: "A category with this name already exists" });
+    } else {
+      next(e);
+    }
+  }
+});
+
+inventoryRouter.delete("/categories/:id", async (req, res, next) => {
+  try {
+    const existing = await prisma.category.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.userId !== req.user!.userId) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
+    await prisma.category.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch (e) {
+    next(e);
+  }
+});
+

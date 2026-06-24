@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@sk-mobile/shared";
 import { api } from "@/lib/api";
 import { InlineAddField } from "@/components/inventory/inline-add-field";
+import { Edit2, Trash2, ChevronDown } from "lucide-react";
 
 type AddProductMode = "cover" | "other_accessory" | "device" | "repair";
 type DeviceKind = Extract<ProductKind, "MOBILE" | "SPEAKERS_SOUND" | "CHARGER_CABLE">;
@@ -49,6 +50,172 @@ function FormStep({
         {locked && <span className="form-step__lock">Complete previous step first</span>}
       </div>
       {!locked && children}
+    </div>
+  );
+}
+
+function CustomCategorySelect({
+  value,
+  onChange,
+  options,
+  onEdit,
+  onDelete,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { id: string; name: string }[];
+  onEdit: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [editingCat, setEditingCat] = useState<{id: string, name: string} | null>(null);
+  const [editName, setEditName] = useState("");
+  const [deletingCat, setDeletingCat] = useState<{id: string, name: string} | null>(null);
+  
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} style={{ position: "relative", width: "100%", marginBottom: "16px" }}>
+      <div
+        style={{
+          border: "1px solid var(--border)",
+          padding: "10px 14px",
+          borderRadius: "8px",
+          cursor: "pointer",
+          background: "var(--card)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}
+        onClick={() => setOpen(!open)}
+      >
+        {value === "" ? "General accessory" : options.find(o => o.id === value)?.name || "General accessory"}
+        <ChevronDown size={16} />
+      </div>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            borderRadius: "8px",
+            marginTop: "4px",
+            zIndex: 10,
+            maxHeight: "250px",
+            overflowY: "auto",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
+          }}
+        >
+          <div
+            style={{ padding: "10px 14px", cursor: "pointer" }}
+            onClick={() => { onChange(""); setOpen(false); }}
+            className="dropdown-item"
+          >
+            General accessory
+          </div>
+          {options.map((opt) => (
+            <div
+              key={opt.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "10px 14px",
+                cursor: "pointer",
+              }}
+              className="dropdown-item category-dropdown-item"
+              onClick={() => { onChange(opt.id); setOpen(false); }}
+            >
+              <span>{opt.name}</span>
+              <div className="category-actions" style={{ gap: "8px" }}>
+                <button
+                  type="button"
+                  style={{ background: "none", border: "none", color: "#0070f3", cursor: "pointer", padding: 0 }}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setEditName(opt.name);
+                    setEditingCat({ id: opt.id, name: opt.name }); 
+                    setOpen(false); 
+                  }}
+                  title="Edit category"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  type="button"
+                  style={{ background: "none", border: "none", color: "#e11d48", cursor: "pointer", padding: 0 }}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setDeletingCat({ id: opt.id, name: opt.name }); 
+                    setOpen(false); 
+                  }}
+                  title="Delete category"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingCat && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600 }}>Edit Category</h3>
+            <input
+              type="text"
+              value={editName}
+              onChange={e => setEditName(e.target.value)}
+              style={{ width: "100%", padding: "10px", border: "1px solid var(--border)", borderRadius: "8px", marginBottom: "20px" }}
+              autoFocus
+            />
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button className="secondary" onClick={() => setEditingCat(null)}>Cancel</button>
+              <button onClick={() => {
+                if (editName.trim() && editName.trim() !== editingCat.name) {
+                  onEdit(editingCat.id, editName.trim());
+                }
+                setEditingCat(null);
+              }}>Save Changes</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deletingCat && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", padding: "24px", borderRadius: "12px", width: "90%", maxWidth: "400px", boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+            <h3 style={{ marginTop: 0, marginBottom: "16px", fontSize: "1.2rem", fontWeight: 600, color: "#e11d48" }}>Delete Category</h3>
+            <p style={{ marginBottom: "20px", color: "var(--muted)", lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong>{deletingCat.name}</strong>? 
+              <br/><br/>
+              Products in this category will be moved to "General accessory". This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end" }}>
+              <button className="secondary" onClick={() => setDeletingCat(null)}>Cancel</button>
+              <button style={{ background: "#e11d48" }} onClick={() => {
+                onDelete(deletingCat.id);
+                setDeletingCat(null);
+              }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -123,6 +290,21 @@ export function ProductForm() {
       setCategoryId(c.id);
       setNewCategory("");
       refetchCategories();
+    },
+  });
+
+  const editCategory = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateCategory(id, name),
+    onSuccess: () => {
+      refetchCategories();
+    },
+  });
+
+  const removeCategory = useMutation({
+    mutationFn: (id: string) => api.deleteCategory(id),
+    onSuccess: () => {
+      refetchCategories();
+      setCategoryId("");
     },
   });
 
@@ -435,14 +617,17 @@ export function ProductForm() {
       {mode === "other_accessory" && (
         <>
           <label className="stat-label">Accessory category</label>
-          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">General accessory</option>
-            {catList.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <CustomCategorySelect
+            value={categoryId}
+            onChange={setCategoryId}
+            options={catList}
+            onEdit={(id, name) => {
+              editCategory.mutate({ id, name });
+            }}
+            onDelete={(id) => {
+              removeCategory.mutate(id);
+            }}
+          />
           <InlineAddField
             triggerLabel="Add new category"
             placeholder="e.g. Memory/Pendrive, Earphones, Glass"

@@ -6385,3 +6385,8 @@ select {
     max-width: 46mm !important;
   }
 }
+
+.dropdown-item { transition: background-color 0.15s ease; }
+.dropdown-item:hover { background: #f1f5f9; }
+.category-dropdown-item .category-actions { display: none; }
+.category-dropdown-item:hover .category-actions { display: flex !important; }

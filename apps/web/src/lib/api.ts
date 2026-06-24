@@ -183,6 +183,19 @@ export const api = {
         body: JSON.stringify({ name }),
       }),
     ),
+  updateCategory: (id: string, name: string) =>
+    withAuth(() =>
+      requestJson<{ id: string; name: string }>(`/api/v1/inventory/categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    ),
+  deleteCategory: (id: string) =>
+    withAuth(() =>
+      requestJson<void>(`/api/v1/inventory/categories/${id}`, {
+        method: "DELETE",
+      }),
+    ),
   getRechargeEntries: (monthId: string, page?: number, date?: string, limit?: number) =>
     withAuth(() => client.getRechargeEntries(monthId, page, date, limit)),
   createRechargeEntry: (

@@ -222,6 +222,9 @@ class ApiService {
   Future<Map<String, dynamic>> createProduct(Map<String, dynamic> data) =>
       _request('POST', '/api/v1/inventory/products', data: data);
 
+  Future<Map<String, dynamic>> batchCreateCovers(Map<String, dynamic> data) =>
+      _request('POST', '/api/v1/inventory/products/batch-covers', data: data);
+
   Future<Map<String, dynamic>> getProduct(String id) =>
       _request('GET', '/api/v1/inventory/products/$id');
 
