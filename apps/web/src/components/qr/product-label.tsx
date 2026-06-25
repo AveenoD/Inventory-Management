@@ -4,47 +4,62 @@ import Barcode from "react-barcode";
 import {
   barcodePayloadForProduct,
   getEffectiveSalePrice,
-  getProductDiscount,
-  getProductDisplayName,
   type ProductDto,
 } from "@sk-mobile/shared";
 import { formatMoney } from "@/lib/format";
 
-export function ProductLabel({ product }: { product: ProductDto }) {
-  const discount = getProductDiscount(product);
+export type LabelSize = "38x21" | "48x24" | "64x34" | "100x44";
+
+const BARCODE_CONFIG: Record<LabelSize, { width: number; height: number; nameTrunc: number }> = {
+  "38x21": { width: 0.8, height: 16, nameTrunc: 20 },
+  "48x24": { width: 1.0, height: 22, nameTrunc: 28 },
+  "64x34": { width: 1.2, height: 30, nameTrunc: 40 },
+  "100x44": { width: 1.5, height: 38, nameTrunc: 60 },
+};
+
+const SHOP_NAME = "SK MOBILE SHOP";
+
+export function ProductLabel({
+  product,
+  size = "48x24",
+}: {
+  product: ProductDto;
+  size?: LabelSize;
+}) {
   const barcodeValue = barcodePayloadForProduct(product);
-  const displayName = getProductDisplayName(product);
-  const name = displayName.length > 28 ? `${displayName.slice(0, 26)}…` : displayName;
-  const salePrice = formatMoney(getEffectiveSalePrice(product));
+  const cfg = BARCODE_CONFIG[size];
+
+  // Use short product name only (no variant/model prefix)
+  const rawName = product.name?.trim() || "Product";
+  const name = rawName.length > cfg.nameTrunc
+    ? `${rawName.slice(0, cfg.nameTrunc - 1)}…`
+    : rawName;
+
+  const mrp = parseFloat(product.sellPrice) || 0;
+  const salePrice = getEffectiveSalePrice(product);
+  const hasDifferentSalePrice = salePrice < mrp;
 
   return (
-    <div className="product-label">
-      <div className="product-label__name">{name}</div>
+    <div className={`product-label product-label--${size}`}>
+      <div className="product-label__shop">{SHOP_NAME}</div>
       <div className="product-label__barcode">
         <Barcode
           value={barcodeValue}
           format="CODE128"
-          width={1.1}
-          height={32}
+          width={cfg.width}
+          height={cfg.height}
           fontSize={0}
           margin={0}
           displayValue={false}
         />
       </div>
-      <div className="product-label__meta">
-        {product.sku ? <div className="product-label__sku">{product.sku}</div> : null}
-        {discount.hasDiscount ? (
-          <div className="product-label__prices">
-            <span className="product-label__mrp strike">
-              MRP {formatMoney(product.sellPrice)}
-            </span>
-            <span className="product-label__offer">
-              {salePrice}
-              <span className="product-label__off"> -{discount.percent}%</span>
-            </span>
-          </div>
-        ) : (
-          <div className="product-label__offer">MRP {salePrice}</div>
+      <div className="product-label__name">{name}</div>
+      <div className="product-label__price-block">
+        <span className="product-label__mrp-line">MRP-{formatMoney(product.sellPrice)}</span>
+        {hasDifferentSalePrice && (
+          <span className="product-label__sale-line">
+            Sale Price: {formatMoney(String(salePrice))}
+          </span>
         )}
       </div>
     </div>

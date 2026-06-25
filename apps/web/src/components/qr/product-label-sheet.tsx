@@ -1,14 +1,31 @@
 "use client";
 
 import type { ProductDto } from "@sk-mobile/shared";
-import { ProductLabel } from "./product-label";
+import { ProductLabel, type LabelSize } from "./product-label";
 
-export function ProductLabelSheet({ products }: { products: ProductDto[] }) {
+export type LabelEntry = {
+  product: ProductDto;
+  qty: number;
+};
+
+export function ProductLabelSheet({
+  entries,
+  size = "48x24",
+}: {
+  entries: LabelEntry[];
+  size?: LabelSize;
+}) {
   return (
     <div className="product-label-sheet" id="product-label-print-root">
-      {products.map((p) => (
-        <ProductLabel key={p.id} product={p} />
-      ))}
+      {entries.flatMap((entry) =>
+        Array.from({ length: entry.qty }, (_, i) => (
+          <ProductLabel
+            key={`${entry.product.id}-${i}`}
+            product={entry.product}
+            size={size}
+          />
+        )),
+      )}
     </div>
   );
 }
