@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus } from "lucide-react";
+import { ImagePlus, Store } from "lucide-react";
 import { SHOP_NAME } from "@sk-mobile/shared";
 import { api } from "@/lib/api";
-import { PageHeader } from "@/components/ui/page-header";
 import { PageLoader } from "@/components/ui/page-loader";
 
 const MAX_LOGO_BYTES = 400_000;
@@ -43,7 +42,7 @@ export function InvoiceSettingsCard() {
     onSuccess: (saved) => {
       qc.setQueryData(["invoice-settings"], saved);
       setLogoDirty(false);
-      setSaveMsg("Invoice settings saved.");
+      setSaveMsg("Invoice settings saved successfully.");
       setTimeout(() => setSaveMsg(null), 3000);
     },
   });
@@ -74,75 +73,96 @@ export function InvoiceSettingsCard() {
   if (isLoading) return <PageLoader message="Loading invoice settings…" />;
 
   return (
-    <div className="card form-stack" style={{ maxWidth: 520, marginBottom: "1rem" }}>
-      <h3 style={{ marginTop: 0 }}>Invoice Settings</h3>
-      <p className="muted">
-        Logo, address, and warranty text appear on every sale invoice. Shop name is fixed as{" "}
-        <strong>{SHOP_NAME}</strong>.
-      </p>
-
-      <label className="stat-label">Shop name</label>
-      <input type="text" value={SHOP_NAME} disabled />
-
-      <label className="stat-label">Shop logo</label>
-      <div className="invoice-settings-logo">
-        {logoPreview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoPreview} alt="Shop logo" className="invoice-settings-logo-preview" />
-        ) : (
-          <div className="invoice-settings-logo-empty">
-            <ImagePlus size={24} />
-            <span>No logo</span>
-          </div>
-        )}
-        <div className="invoice-settings-logo-actions">
-          <label className="secondary invoice-file-label">
-            Upload logo
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => onLogoChange(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          {logoPreview && (
-            <button type="button" className="secondary" onClick={removeLogo}>
-              Remove
-            </button>
-          )}
+    <div className="settings-card">
+      <div className="settings-card-header">
+        <div className="settings-card-icon">
+          <Store size={20} />
+        </div>
+        <div>
+          <h3 className="settings-card-title">Invoice Settings</h3>
+          <p className="settings-card-subtitle">
+            Configure logo, address, and terms that appear on printouts.
+          </p>
         </div>
       </div>
 
-      <label className="stat-label">Shop address</label>
-      <textarea
-        rows={3}
-        value={address}
-        onChange={(e) => setAddress(e.target.value)}
-        placeholder="Street, area, city, pin code"
-      />
+      <div className="settings-form-row">
+        <label className="stat-label">Shop name</label>
+        <input type="text" value={SHOP_NAME} disabled />
+        <span className="muted" style={{ fontSize: "0.8rem", marginTop: "-4px" }}>
+          Fixed by your account theme.
+        </span>
+      </div>
 
-      <label className="stat-label">Phone number</label>
-      <input
-        type="tel"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="98XXXXXXXX"
-      />
+      <div className="settings-form-row">
+        <label className="stat-label">Shop logo</label>
+        <div className="invoice-settings-logo" style={{ marginTop: "0.25rem" }}>
+          {logoPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoPreview} alt="Shop logo" className="invoice-settings-logo-preview" />
+          ) : (
+            <div className="invoice-settings-logo-empty">
+              <ImagePlus size={24} />
+              <span>No logo</span>
+            </div>
+          )}
+          <div className="invoice-settings-logo-actions">
+            <label className="secondary invoice-file-label">
+              Upload logo
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => onLogoChange(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {logoPreview && (
+              <button type="button" className="secondary" onClick={removeLogo}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
-      <label className="stat-label">Default warranty / guarantee</label>
-      <textarea
-        rows={4}
-        value={warrantyText}
-        onChange={(e) => setWarrantyText(e.target.value)}
-        placeholder="e.g. Accessories: 6 months warranty. Tempered glass: 7 days. No warranty on physical damage."
-      />
+      <div className="settings-form-row">
+        <label className="stat-label">Shop address</label>
+        <textarea
+          rows={3}
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="Street, area, city, pin code"
+        />
+      </div>
+
+      <div className="settings-form-row">
+        <label className="stat-label">Phone number</label>
+        <input
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="98XXXXXXXX"
+        />
+      </div>
+
+      <div className="settings-form-row">
+        <label className="stat-label">Default warranty / guarantee terms</label>
+        <textarea
+          rows={3}
+          value={warrantyText}
+          onChange={(e) => setWarrantyText(e.target.value)}
+          placeholder="e.g. Accessories: 6 months warranty. Tempered glass: 7 days. No warranty on physical damage."
+        />
+      </div>
 
       {save.error && <p className="error">{(save.error as Error).message}</p>}
-      {saveMsg && <p className="muted">{saveMsg}</p>}
-
-      <button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
-        {save.isPending ? "Saving…" : "Save invoice settings"}
-      </button>
+      
+      <div className="settings-btn-group">
+        <button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
+          {save.isPending ? "Saving…" : "Save invoice settings"}
+        </button>
+        {saveMsg && <span className="muted" style={{ fontSize: "0.9rem", color: "var(--green)", fontWeight: 600 }}>{saveMsg}</span>}
+      </div>
     </div>
   );
 }

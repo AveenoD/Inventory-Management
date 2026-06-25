@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import type { RepairJobDto } from "@sk-mobile/shared";
-import { Download, Printer, Share2 } from "lucide-react";
+import { Download, Printer, Share2, MapPin, Phone, ShieldCheck } from "lucide-react";
 import { amountInWords, formatMoney } from "@/lib/format";
 
 function formatInvoiceDate(date: string) {
@@ -17,10 +17,21 @@ type Props = {
   job: RepairJobDto;
   shopName?: string;
   logoDataUrl?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  warrantyText?: string | null;
   showActions?: boolean;
 };
 
-export function RepairInvoiceView({ job, shopName = "SK Mobile Shop", logoDataUrl = null, showActions = true }: Props) {
+export function RepairInvoiceView({
+  job,
+  shopName = "SK Mobile Shop",
+  logoDataUrl = null,
+  address,
+  phone,
+  warrantyText,
+  showActions = true,
+}: Props) {
   const printRef = useRef<HTMLDivElement>(null);
 
   function handlePrint() {
@@ -94,6 +105,20 @@ export function RepairInvoiceView({ job, shopName = "SK Mobile Shop", logoDataUr
               )}
               <div className="inv-brand-text">
                 <h1>{shopName}</h1>
+                {(address || phone) && (
+                  <>
+                    {address && (
+                      <div className="inv-contact">
+                        <MapPin size={11} /> {address}
+                      </div>
+                    )}
+                    {phone && (
+                      <div className="inv-contact">
+                        <Phone size={11} /> {phone}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
             <div className="inv-header-right">
@@ -168,6 +193,16 @@ export function RepairInvoiceView({ job, shopName = "SK Mobile Shop", logoDataUr
           </div>
         </div>
 
+        {warrantyText && (
+          <div className="inv-warranty">
+            <div className="inv-warranty-head">
+              <ShieldCheck className="inv-warranty-icon" size={14} />
+              Terms & Conditions
+            </div>
+            <div className="inv-warranty-text">{warrantyText}</div>
+          </div>
+        )}
+
         <div className="inv-footer">
           <div className="inv-footer-left">
             <p className="inv-thanks">Thank you for your business!</p>
@@ -184,3 +219,4 @@ export function RepairInvoiceView({ job, shopName = "SK Mobile Shop", logoDataUr
     </div>
   );
 }
+

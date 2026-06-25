@@ -525,6 +525,34 @@ export function createApiClient(baseUrl: string, getToken?: () => string | null)
       if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
       return body;
     },
+    previewUniversalImport: async (file: File, entity: string) => {
+      const token = getToken?.();
+      const form = new FormData();
+      form.append("file", file);
+      form.append("entity", entity);
+      const res = await fetch(`${baseUrl}/api/v1/import/universal/preview`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
+      return body;
+    },
+    executeUniversalImport: async (file: File, entity: string) => {
+      const token = getToken?.();
+      const form = new FormData();
+      form.append("file", file);
+      form.append("entity", entity);
+      const res = await fetch(`${baseUrl}/api/v1/import/universal/execute`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, body.error ?? res.statusText);
+      return body;
+    },
     getNotifications: (page = 1, limit = 20) =>
       request<NotificationsResponse>(
         `/api/v1/notifications?page=${page}&limit=${limit}`,

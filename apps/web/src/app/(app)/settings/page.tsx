@@ -5,8 +5,9 @@ import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatMoney } from "@/lib/format";
-import { Download } from "lucide-react";
+import { Download, Upload, FileDown, CheckCircle, AlertCircle, XCircle } from "lucide-react";
 import { InvoiceSettingsCard } from "@/components/settings/invoice-settings-card";
+import { UniversalImportWizard } from "@/components/settings/universal-import-wizard";
 
 type ExportPeriod = "month" | "day";
 
@@ -87,180 +88,250 @@ export default function SettingsPage() {
   const active = result ?? preview;
 
   return (
-    <div>
-      <PageHeader title="Settings" subtitle="Import and export business data" />
+    <div className="settings-page">
+      <PageHeader title="Settings" subtitle="Manage shop configuration and data" />
 
-      <InvoiceSettingsCard />
+      <div className="settings-grid">
+        {/* Left Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <InvoiceSettingsCard />
 
-      <div className="card form-stack" style={{ maxWidth: 520, marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>Export Excel</h3>
-        <p className="muted">
-          Download sales, profit, inventory stock balance, and daily breakdown. Choose full month or a
-          single day.
-        </p>
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
-            <input
-              type="radio"
-              name="exportPeriod"
-              checked={exportPeriod === "month"}
-              onChange={() => setExportPeriod("month")}
-            />
-            Full month
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer" }}>
-            <input
-              type="radio"
-              name="exportPeriod"
-              checked={exportPeriod === "day"}
-              onChange={() => setExportPeriod("day")}
-            />
-            Single day
-          </label>
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <div className="settings-card-icon">
+                <FileDown size={20} />
+              </div>
+              <div>
+                <h3 className="settings-card-title">Export Business Data</h3>
+                <p className="settings-card-subtitle">
+                  Download sales, profit, stock balance, and daily breakdown.
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-form-row">
+              <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontWeight: 600 }}>
+                  <input
+                    type="radio"
+                    name="exportPeriod"
+                    checked={exportPeriod === "month"}
+                    onChange={() => setExportPeriod("month")}
+                  />
+                  Full month
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", cursor: "pointer", fontWeight: 600 }}>
+                  <input
+                    type="radio"
+                    name="exportPeriod"
+                    checked={exportPeriod === "day"}
+                    onChange={() => setExportPeriod("day")}
+                  />
+                  Single day
+                </label>
+              </div>
+            </div>
+
+            {exportPeriod === "month" ? (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <div className="settings-form-row">
+                  <label className="stat-label">Year</label>
+                  <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+                </div>
+                <div className="settings-form-row">
+                  <label className="stat-label">Month</label>
+                  <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} />
+                </div>
+              </div>
+            ) : (
+              <div className="settings-form-row">
+                <label className="stat-label">Export date</label>
+                <input
+                  type="date"
+                  value={exportDate}
+                  onChange={(e) => setExportDate(e.target.value)}
+                />
+              </div>
+            )}
+
+            {exportError && <p className="error" style={{ marginTop: "1rem" }}>{exportError}</p>}
+            
+            <div className="settings-btn-group">
+              <button type="button" onClick={handleExport} disabled={exporting}>
+                <Download size={16} style={{ marginRight: 6 }} />
+                {exporting ? "Preparing Excel…" : "Download Excel"}
+              </button>
+            </div>
+          </div>
         </div>
-        {exportPeriod === "month" ? (
-          <>
-            <label className="stat-label">Year</label>
-            <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
-            <label className="stat-label">Month</label>
-            <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} />
-          </>
-        ) : (
-          <>
-            <label className="stat-label">Export date</label>
-            <input
-              type="date"
-              value={exportDate}
-              onChange={(e) => setExportDate(e.target.value)}
-            />
-          </>
-        )}
-        {exportError && <p className="error">{exportError}</p>}
-        <button type="button" onClick={handleExport} disabled={exporting}>
-          <Download size={16} style={{ marginRight: 6, verticalAlign: "middle" }} />
-          {exporting ? "Preparing Excel…" : "Download Excel"}
-        </button>
+
+        {/* Right Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <UniversalImportWizard />
+
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <div className="settings-card-icon" style={{ background: "rgba(34, 197, 94, 0.1)", color: "#16a34a" }}>
+                <Upload size={20} />
+              </div>
+              <div>
+                <h3 className="settings-card-title">Import Legacy Data</h3>
+                <p className="settings-card-subtitle">
+                  Upload an existing Excel workbook (.xlsx). Preview before importing.
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-form-row">
+              <button type="button" className="secondary" onClick={downloadTemplate} disabled={templateLoading} style={{ alignSelf: "flex-start" }}>
+                <Download size={16} style={{ marginRight: 6 }} />
+                {templateLoading ? "Downloading…" : "Download Template"}
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div className="settings-form-row">
+                <label className="stat-label">Import year</label>
+                <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+              </div>
+              <div className="settings-form-row">
+                <label className="stat-label">Import month</label>
+                <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="settings-form-row">
+              <label className="stat-label">Excel file</label>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] ?? null);
+                  setPreview(null);
+                  setResult(null);
+                }}
+                style={{ padding: "0.5rem" }}
+              />
+            </div>
+
+            {(previewImport.error || importExcel.error) && (
+              <p className="error" style={{ marginTop: "1rem", padding: "0.75rem", background: "#fef2f2", borderRadius: "8px" }}>
+                <AlertCircle size={16} style={{ verticalAlign: "middle", marginRight: "4px" }} />
+                {((previewImport.error ?? importExcel.error) as Error).message}
+              </p>
+            )}
+
+            <div className="settings-btn-group">
+              <button
+                type="button"
+                className="secondary"
+                disabled={!file || previewImport.isPending}
+                onClick={() => previewImport.mutate()}
+              >
+                {previewImport.isPending ? "Checking…" : "Preview Import"}
+              </button>
+              <button
+                type="button"
+                disabled={!file || importExcel.isPending}
+                onClick={() => importExcel.mutate()}
+                style={{ background: "#16a34a", borderColor: "#16a34a" }}
+              >
+                {importExcel.isPending ? "Importing…" : "Import Now"}
+              </button>
+            </div>
+          </div>
+
+          {active && (
+            <div className="settings-card" style={{ border: result ? "2px solid #22c55e" : "2px solid #3b82f6" }}>
+              <div className="settings-card-header" style={{ marginBottom: "1rem", paddingBottom: "0.75rem" }}>
+                <div className="settings-card-icon" style={{ background: "transparent", color: result ? "#16a34a" : "#2563eb", width: "auto" }}>
+                  {result ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
+                </div>
+                <div>
+                  <h3 className="settings-card-title">{result ? "Import Successful" : "Import Preview"}</h3>
+                  {active.sheets && (
+                    <p className="settings-card-subtitle">Found sheets: {active.sheets.join(", ")}</p>
+                  )}
+                </div>
+              </div>
+
+              {active.counts && (
+                <div className="settings-form-row">
+                  <label className="stat-label">Detected Records</label>
+                  <table className="data-list" style={{ width: "100%", background: "#f8fafc", borderRadius: "8px", overflow: "hidden" }}>
+                    <tbody>
+                      <tr>
+                        <td>Money Transfer</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{active.counts.moneyTransferDays} days</td>
+                      </tr>
+                      <tr>
+                        <td>Recharge</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{active.counts.rechargeDays} days</td>
+                      </tr>
+                      <tr>
+                        <td>Repair</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{active.counts.repairDays} days</td>
+                      </tr>
+                      <tr>
+                        <td>Mobile</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{active.counts.mobileDays} days</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {active.validation && (
+                <div className="settings-form-row" style={{ marginTop: "1rem" }}>
+                  <label className="stat-label">Projected Totals</label>
+                  <table className="data-list" style={{ width: "100%", background: "#f8fafc", borderRadius: "8px", overflow: "hidden" }}>
+                    <tbody>
+                      <tr>
+                        <td>Total income</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{formatMoney(active.validation.totalIncome)}</td>
+                      </tr>
+                      <tr>
+                        <td>Net profit</td>
+                        <td className="right" style={{ fontWeight: 600, color: "var(--green)" }}>{formatMoney(active.validation.netProfit)}</td>
+                      </tr>
+                      <tr>
+                        <td>Recharge + Transfer</td>
+                        <td className="right" style={{ fontWeight: 600 }}>{formatMoney(active.validation.rechargeTransferProfit)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {active.warnings && active.warnings.length > 0 && (
+                <div className="settings-form-row" style={{ marginTop: "1rem" }}>
+                  <label className="stat-label" style={{ color: "#ca8a04", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <AlertCircle size={14} /> Warnings
+                  </label>
+                  <ul className="muted" style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem" }}>
+                    {active.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {active.errors && active.errors.length > 0 && (
+                <div className="settings-form-row" style={{ marginTop: "1rem" }}>
+                  <label className="stat-label" style={{ color: "#dc2626", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <XCircle size={14} /> Errors
+                  </label>
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem", fontSize: "0.85rem", color: "#dc2626" }}>
+                    {active.errors.map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-
-      <div className="card form-stack" style={{ maxWidth: 520, marginBottom: "1rem" }}>
-        <h3 style={{ marginTop: 0 }}>Import Excel</h3>
-        <p className="muted">
-          Upload your shop workbook (.xlsx). Supports Money Transfer, Recharge, Repair, and Mobile
-          sheets. Preview first to verify row counts before importing.
-        </p>
-        <button type="button" className="secondary" onClick={downloadTemplate} disabled={templateLoading}>
-          <Download size={16} style={{ marginRight: 6, verticalAlign: "middle" }} />
-          {templateLoading ? "Downloading…" : "Download import template"}
-        </button>
-        <label className="stat-label">Import year</label>
-        <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
-        <label className="stat-label">Import month</label>
-        <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(e.target.value)} />
-        <label className="stat-label">Excel file</label>
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null);
-            setPreview(null);
-            setResult(null);
-          }}
-        />
-        {(previewImport.error || importExcel.error) && (
-          <p className="error">
-            {((previewImport.error ?? importExcel.error) as Error).message}
-          </p>
-        )}
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="secondary"
-            disabled={!file || previewImport.isPending}
-            onClick={() => previewImport.mutate()}
-          >
-            {previewImport.isPending ? "Checking…" : "Preview import"}
-          </button>
-          <button
-            type="button"
-            disabled={!file || importExcel.isPending}
-            onClick={() => importExcel.mutate()}
-          >
-            {importExcel.isPending ? "Importing…" : "Import now"}
-          </button>
-        </div>
-      </div>
-
-      {active && (
-        <div className="card" style={{ maxWidth: 520 }}>
-          <h3>{result ? "Import complete" : "Import preview"}</h3>
-          {active.sheets && (
-            <p className="muted">Sheets found: {active.sheets.join(", ")}</p>
-          )}
-          {active.counts && (
-            <table className="data-list" style={{ marginTop: "0.75rem" }}>
-              <tbody>
-                <tr>
-                  <td>Money Transfer days</td>
-                  <td className="right">{active.counts.moneyTransferDays}</td>
-                </tr>
-                <tr>
-                  <td>Recharge days</td>
-                  <td className="right">{active.counts.rechargeDays}</td>
-                </tr>
-                <tr>
-                  <td>Repair days</td>
-                  <td className="right">{active.counts.repairDays}</td>
-                </tr>
-                <tr>
-                  <td>Mobile days</td>
-                  <td className="right">{active.counts.mobileDays}</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-          {active.validation && (
-            <div style={{ marginTop: "1rem" }}>
-              <h4>Dashboard totals after import</h4>
-              <table className="data-list">
-                <tbody>
-                  <tr>
-                    <td>Total income</td>
-                    <td className="right">{formatMoney(active.validation.totalIncome)}</td>
-                  </tr>
-                  <tr>
-                    <td>Net profit</td>
-                    <td className="right">{formatMoney(active.validation.netProfit)}</td>
-                  </tr>
-                  <tr>
-                    <td>Recharge + Transfer</td>
-                    <td className="right">{formatMoney(active.validation.rechargeTransferProfit)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-          {active.warnings && active.warnings.length > 0 && (
-            <div style={{ marginTop: "1rem" }}>
-              <h4>Warnings</h4>
-              <ul className="muted">
-                {active.warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {active.errors && active.errors.length > 0 && (
-            <div style={{ marginTop: "1rem" }}>
-              <h4 className="error">Errors</h4>
-              <ul>
-                {active.errors.map((e) => (
-                  <li key={e} className="error">{e}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

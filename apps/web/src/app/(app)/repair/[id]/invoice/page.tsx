@@ -50,6 +50,9 @@ export default function RepairInvoicePage() {
           job={job}
           shopName={settings?.shopName || undefined}
           logoDataUrl={settings?.logoDataUrl || null}
+          address={settings?.address || null}
+          phone={settings?.phone || null}
+          warrantyText={settings?.warrantyText || null}
         />
       </div>
     </MonthGate>
