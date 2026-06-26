@@ -32,7 +32,7 @@ export function UniversalImportWizard() {
   const handleDownloadTemplate = () => {
     // API client doesn't handle blob downloads cleanly sometimes, so we'll just redirect to the URL
     // or trigger a standard download via a link
-    window.open(`http://localhost:3001/api/v1/import/universal/template?entity=${entity}`, "_blank");
+    window.open(api.getUniversalImportTemplateUrl(entity), "_blank");
   };
 
   const handlePreview = async (selectedFile: File) => {

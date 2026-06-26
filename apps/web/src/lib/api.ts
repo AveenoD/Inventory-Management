@@ -402,4 +402,40 @@ export const api = {
   markAllNotificationsRead: () =>
     withAuth(() => client.markAllNotificationsRead()),
   health: () => client.health(),
+  getUniversalImportTemplateUrl: (entity: string) =>
+    `${baseUrl}/api/v1/import/universal/template?entity=${entity}`,
+  previewUniversalImport: (file: File, entity: string) =>
+    withAuth(async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("entity", entity);
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${baseUrl}/api/v1/import/universal/preview`, {
+        method: "POST",
+        headers,
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, body.error ?? body.message ?? res.statusText);
+      return body;
+    }),
+  executeUniversalImport: (file: File, entity: string) =>
+    withAuth(async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("entity", entity);
+      const token = getToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const res = await fetch(`${baseUrl}/api/v1/import/universal/execute`, {
+        method: "POST",
+        headers,
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, body.error ?? body.message ?? res.statusText);
+      return body;
+    }),
 };
