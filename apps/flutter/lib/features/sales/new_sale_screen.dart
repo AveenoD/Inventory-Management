@@ -89,7 +89,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   bool _scanProcessing = false;
   String? _scanStatus;
   Timer? _searchDebounce;
-  MobileScannerController? _scannerController;
+  late final MobileScannerController _scannerController = MobileScannerController();
   final _manualScanInput = TextEditingController();
   final _manualScanFocus = FocusNode();
   String? _lastScannedCode;
@@ -109,11 +109,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    try {
-      _scannerController?.dispose();
-    } catch (_) {
-      // ignore dispose errors
-    }
+    _scannerController.dispose();
     _manualScanInput.dispose();
     _manualScanFocus.dispose();
     _customer.dispose();
@@ -151,24 +147,6 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       }
     }
 
-    try {
-      _scannerController?.dispose();
-    } catch (_) {
-      // ignore dispose errors from un-initialized controllers
-    }
-    _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      facing: CameraFacing.back,
-      formats: const [
-        BarcodeFormat.code128,
-        BarcodeFormat.qrCode,
-        BarcodeFormat.ean13,
-        BarcodeFormat.ean8,
-        BarcodeFormat.upcA,
-        BarcodeFormat.upcE,
-      ],
-    );
-
     if (!mounted) return;
     setState(() {
       _scannerOpen = true;
@@ -177,14 +155,11 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 
   void _closeScanner() {
-    try {
-      _scannerController?.dispose();
-    } catch (_) {
-      // ignore dispose errors
-    }
-    _scannerController = null;
     if (!mounted) return;
     setState(() => _scannerOpen = false);
+    try {
+      _scannerController.stop();
+    } catch (_) {}
   }
 
   Future<void> _handleScan(String raw) async {
@@ -511,7 +486,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            '${error.errorCode.name}\nUse SKU field on sale screen instead.',
+                            '${error.errorCode.name}\n${error.errorDetails?.message ?? 'Use SKU field on sale screen instead.'}',
                             style: const TextStyle(color: Colors.white70, fontSize: 13),
                             textAlign: TextAlign.center,
                           ),

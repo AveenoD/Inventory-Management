@@ -217,17 +217,17 @@ class _NewProductScreenState extends ConsumerState<NewProductScreen> {
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              Expanded(child: AppTextField(controller: _coverRows[t['id']]!.buy, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Buy', isDense: true))),
+                              Expanded(child: TextField(controller: _coverRows[t['id']]!.buy, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Buy', isDense: true))),
                               const SizedBox(width: 12),
-                              Expanded(child: AppTextField(controller: _coverRows[t['id']]!.mrp, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'MRP', isDense: true))),
+                              Expanded(child: TextField(controller: _coverRows[t['id']]!.mrp, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'MRP', isDense: true))),
                             ],
                           ),
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              Expanded(child: AppTextField(controller: _coverRows[t['id']]!.offer, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Offer', isDense: true))),
+                              Expanded(child: TextField(controller: _coverRows[t['id']]!.offer, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Offer', isDense: true))),
                               const SizedBox(width: 12),
-                              Expanded(child: AppTextField(controller: _coverRows[t['id']]!.qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', isDense: true))),
+                              Expanded(child: TextField(controller: _coverRows[t['id']]!.qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Qty', isDense: true))),
                             ],
                           ),
                         ],

@@ -314,7 +314,7 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
                                   icon: const Icon(Icons.remove, size: 16),
                                   onPressed: () => _setQty('${q.product['id']}', q.qty - 1),
                                   style: IconButton.styleFrom(
-                                    backgroundColor: AppColors.scaffold,
+                                    backgroundColor: AppColors.pageBg,
                                     padding: EdgeInsets.zero,
                                     minimumSize: const Size(32, 32),
                                   ),
@@ -326,7 +326,7 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
                                   icon: const Icon(Icons.add, size: 16),
                                   onPressed: () => _setQty('${q.product['id']}', q.qty + 1),
                                   style: IconButton.styleFrom(
-                                    backgroundColor: AppColors.scaffold,
+                                    backgroundColor: AppColors.pageBg,
                                     padding: EdgeInsets.zero,
                                     minimumSize: const Size(32, 32),
                                   ),
@@ -376,9 +376,10 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
               ),
             ),
           if (!_loading && _error == null && _products.isNotEmpty)
-            Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 260,
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
@@ -430,7 +431,6 @@ class _QrLabelsScreenState extends ConsumerState<QrLabelsScreen> {
                   );
                 },
               ),
-            ),
         ],
       ),
     );

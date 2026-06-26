@@ -41,7 +41,7 @@ class RepairInvoiceView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: const BoxDecoration(
-              color: AppColors.primary,
+              color: AppColors.accent,
               border: Border(bottom: BorderSide(color: AppColors.accent, width: 3)),
             ),
             child: Row(
@@ -69,7 +69,7 @@ class RepairInvoiceView extends StatelessWidget {
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('SK', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 18)),
+                          child: const Text('SK', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.accent, fontSize: 18)),
                         ),
                       Expanded(
                         child: Column(
@@ -187,8 +187,8 @@ class RepairInvoiceView extends StatelessWidget {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(6)),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                      decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(6)),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -233,7 +233,7 @@ class RepairInvoiceView extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Thank you for your business!', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                    const Text('Thank you for your business!', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 13)),
                     const SizedBox(height: 2),
                     Text('We appreciate your trust in ${settings.shopName}.', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
                   ],
