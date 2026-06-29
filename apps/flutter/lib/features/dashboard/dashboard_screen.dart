@@ -315,54 +315,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             tone: StatTone.blue,
             icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
             label: "Today's Sales",
-            value: formatMoney(_asNum(raw['salesTotal'])),
-            sub: '${_asInt(raw['salesCount']) ?? 0} bills',
-          ),
-        ),
-        MetricCell(
-          child: GradientStatCard(
-            tone: StatTone.green,
-            icon: const Icon(AppIcons.trendingUp, color: AppColors.green, size: 18),
-            label: "Today's Profit",
-            value: formatMoney(_asNum(raw['salesProfit'])),
-            sub: 'Sales profit',
-          ),
-        ),
-        MetricCell(
-          child: GradientStatCard(
-            tone: StatTone.orange,
-            icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
-            label: 'Repair Profit',
-            value: formatMoney(_asNum(raw['repairProfit'])),
-            sub:
-                '${_asInt(raw['repairDelivered']) ?? 0} delivered · ${_asInt(raw['repairUndeliveredCount']) ?? 0} undelivered',
+            value: '${_asInt(raw['salesCount']) ?? 0}',
           ),
         ),
         MetricCell(
           child: GradientStatCard(
             tone: StatTone.purple,
             icon: const Icon(AppIcons.smartphone, color: AppColors.purple, size: 18),
-            label: 'Recharge',
-            value: formatMoney(_asNum(raw['rechargeTotal'])),
-            sub: 'Recharge income',
+            label: "Today's Recharges",
+            value: '${_asInt(raw['rechargeCount']) ?? 0}',
           ),
         ),
         MetricCell(
           child: GradientStatCard(
             tone: StatTone.teal,
             icon: const Icon(AppIcons.arrowLeftRight, color: Color(0xFF0D9488), size: 18),
-            label: 'Transfer',
-            value: formatMoney(_asNum(raw['transferTotal'])),
-            sub: 'Money transfer',
+            label: "Today's Transfers",
+            value: '${_asInt(raw['transferCount']) ?? 0}',
           ),
         ),
         MetricCell(
           child: GradientStatCard(
-            tone: StatTone.purple,
-            icon: const Icon(AppIcons.trendingUp, color: AppColors.purple, size: 18),
-            label: 'Total Profit',
-            value: formatMoney(_asNum(raw['todayTotalProfit'])),
-            sub: 'All sources today',
+            tone: StatTone.orange,
+            icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
+            label: 'Today\'s Repairs',
+            value: '${(_asInt(raw['repairDelivered']) ?? 0) + (_asInt(raw['repairUndeliveredCount']) ?? 0)}',
+            sub: '${_asInt(raw['repairDelivered']) ?? 0} delivered · ${_asInt(raw['repairUndeliveredCount']) ?? 0} pending',
           ),
         ),
       ],
@@ -405,28 +383,32 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           child: GradientStatCard(
             tone: StatTone.blue,
             icon: const Icon(AppIcons.circleDollarSign, color: AppColors.accent, size: 18),
-            label: 'Month Sales',
-            value: formatMoney(_asNum(raw['monthSalesTotal'])),
-            sub: 'Mobile & accessories',
+            label: 'Total Sales',
+            value: '${_asInt(raw['monthSalesCount']) ?? 0}',
           ),
         ),
         MetricCell(
           child: GradientStatCard(
-            tone: StatTone.green,
-            icon: const Icon(AppIcons.smartphone, color: AppColors.green, size: 18),
-            label: 'Recharge + Transfer',
-            value: formatMoney(_asNum(raw['monthRechargeTransferTotal'])),
+            tone: StatTone.purple,
+            icon: const Icon(AppIcons.smartphone, color: AppColors.purple, size: 18),
+            label: 'Total Recharges',
+            value: '${_asInt(raw['monthRechargeCount']) ?? 0}',
+          ),
+        ),
+        MetricCell(
+          child: GradientStatCard(
+            tone: StatTone.teal,
+            icon: const Icon(AppIcons.arrowLeftRight, color: Color(0xFF0D9488), size: 18),
+            label: 'Total Transfers',
+            value: '${_asInt(raw['monthTransferCount']) ?? 0}',
           ),
         ),
         MetricCell(
           child: GradientStatCard(
             tone: StatTone.orange,
             icon: const Icon(AppIcons.wrench, color: AppColors.amber, size: 18),
-            label: 'Repair Profit',
-            value: formatMoney(_asNum(raw['monthRepairProfit'])),
-            sub: (_asInt(raw['repairPendingCount']) ?? 0) > 0
-                ? 'Undelivered: ${formatMoney(_asNum(raw['repairPendingBalance']))} (${_asInt(raw['repairPendingCount']) ?? 0})'
-                : 'No undelivered',
+            label: 'Total Repairs',
+            value: '${_asInt(raw['monthRepairCount']) ?? 0}',
           ),
         ),
         MetricCell(
