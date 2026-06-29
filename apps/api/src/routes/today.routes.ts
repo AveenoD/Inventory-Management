@@ -236,9 +236,11 @@ todayRouter.get("/", async (req, res, next) => {
 
     const salesTotal = d(salesDayAgg._sum.total ?? 0);
     const salesProfit = salesTotal.minus(d(salesDayAgg._sum.totalCost ?? 0));
-    const salesCount = salesDayAgg._count._all;
-    const rechargeTotal = d(rechargeDayAgg._sum.amount ?? 0);
-    const transferTotal = d(transferDayAgg._sum.amount ?? 0);
+    const salesCount = salesDayAgg._count?._all ?? 0;
+    const rechargeTotal = d(rechargeDayAgg._sum?.amount ?? 0);
+    const rechargeCount = rechargeDayAgg._count?._all ?? 0;
+    const transferTotal = d(transferDayAgg._sum?.amount ?? 0);
+    const transferCount = transferDayAgg._count?._all ?? 0;
     const repairProfit = d(deliveredDayAgg._sum.profit ?? 0);
     const repairDelivered = deliveredDayAgg._count._all;
     const repairPendingCount = pendingPickupAgg._count._all;
@@ -320,7 +322,9 @@ todayRouter.get("/", async (req, res, next) => {
       salesProfit: fmt(salesProfit),
       salesCount,
       rechargeTotal: fmt(rechargeTotal),
+      rechargeCount,
       transferTotal: fmt(transferTotal),
+      transferCount,
       activeRepairs,
       repairDelivered,
       repairProfit: fmt(repairProfit),
@@ -334,7 +338,11 @@ todayRouter.get("/", async (req, res, next) => {
       openingBalance,
       remainingBalance: monthDashboard.paymentSummary.cashPortalBalance,
       monthSalesTotal: monthDashboard.gross.mobileSale,
+      monthSalesCount: monthDashboard.totals.salesCount,
       monthRechargeTotal: monthDashboard.gross.rechargeTotal,
+      monthRechargeCount: monthDashboard.totals.rechargeCount,
+      monthTransferCount: monthDashboard.totals.transferCount,
+      monthRepairCount: monthDashboard.totals.repairJobs,
       monthRechargeTransferTotal: monthDashboard.serviceWise.rechargeTransferProfit,
       monthRepairProfit: monthDashboard.serviceWise.repairProfit,
       monthNetProfit: monthDashboard.netProfit,

@@ -132,7 +132,19 @@ class _RepairInvoiceScreenState extends ConsumerState<RepairInvoiceScreen> {
                       onShare: _shareText,
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    RepairInvoiceView(job: _job!, settings: _settings!),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: constraints.maxWidth > 600 ? constraints.maxWidth : 600,
+                            ),
+                            child: RepairInvoiceView(job: _job!, settings: _settings!),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: AppSpacing.xl),
                   ],
                 ),

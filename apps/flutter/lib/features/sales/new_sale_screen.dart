@@ -21,7 +21,7 @@ import '../../widgets/fields.dart';
 import '../../widgets/page_loader.dart';
 import '../../widgets/screen_shell.dart';
 
-const _pageSize = 20;
+const _pageSize = 3;
 
 const _tabs = <({String key, String label})>[
   (key: 'ALL', label: 'All'),
@@ -317,7 +317,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       final api = ref.read(apiServiceProvider);
       final sale = await api.createSale({
         'date': todayIso(),
-        'customerName': _customer.text.trim().isEmpty ? null : _customer.text.trim(),
+        if (_customer.text.trim().isNotEmpty) 'customerName': _customer.text.trim(),
         'paymentMethod': _payment,
         'discount': _discountValue,
         if (_warranty.text.trim().isNotEmpty) 'warrantyNote': _warranty.text.trim(),

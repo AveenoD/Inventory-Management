@@ -7,7 +7,9 @@ export type TodaySummary = {
   salesProfit: string;
   salesCount: number;
   rechargeTotal: string;
+  rechargeCount: number;
   transferTotal: string;
+  transferCount: number;
   activeRepairs: number;
   repairDelivered: number;
   repairProfit: string;
@@ -39,7 +41,11 @@ export type TodaySummary = {
   openingBalance: string;
   remainingBalance: string;
   monthSalesTotal: string;
+  monthSalesCount?: number;
   monthRechargeTotal: string;
+  monthRechargeCount?: number;
+  monthTransferCount?: number;
+  monthRepairCount?: number;
   monthRechargeTransferTotal: string;
   monthRepairProfit: string;
   monthNetProfit: string;

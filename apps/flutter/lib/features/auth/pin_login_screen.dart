@@ -1,61 +1,74 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_icons.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_error.dart';
-import '../../core/app_version.dart';
 import '../../core/auth/auth_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_icons.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/fields.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+class PinLoginScreen extends ConsumerStatefulWidget {
+  const PinLoginScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<PinLoginScreen> createState() => _PinLoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool _showPassword = false;
+class _PinLoginScreenState extends ConsumerState<PinLoginScreen> {
+  final _pinController = TextEditingController();
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _email.dispose();
-    _password.dispose();
+    _pinController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    final pin = _pinController.text.trim();
+    if (pin.length < 4) return;
+    
     setState(() {
-      _error = null;
       _loading = true;
+      _error = null;
     });
+    
     try {
+      final store = ref.read(tokenStoreProvider);
+      final savedPin = await store.getPin();
+      
+      if (savedPin != pin) {
+        setState(() => _error = 'Incorrect PIN');
+        return;
+      }
+      
+      final email = await store.getEmail();
+      final password = await store.getPassword();
+      
+      if (email == null || password == null) {
+        setState(() => _error = 'Credentials not found. Please login normally.');
+        return;
+      }
+      
       final api = ref.read(apiServiceProvider);
       final res = await api.login({
-        'email': _email.text.trim(),
-        'password': _password.text,
+        'email': email,
+        'password': password,
       });
-      final token = res['token'] as String;
-      await ref.read(authProvider.notifier).login(token);
       
-      final authState = ref.read(authProvider);
-      if (!authState.hasPin) {
-        if (mounted) {
-          context.go('/pin-setup?email=${Uri.encodeComponent(_email.text.trim())}&password=${Uri.encodeComponent(_password.text)}');
-        }
-      }
+      await ref.read(authProvider.notifier).login(res['token'] as String);
     } catch (e) {
       setState(() => _error = e is ApiError ? e.message : 'Login failed');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+  
+  Future<void> _resetLogin() async {
+    await ref.read(authProvider.notifier).clearAll();
   }
 
   @override
@@ -77,34 +90,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Icon(Icons.lock_outline, size: 48, color: AppColors.accent),
+                  const SizedBox(height: AppSpacing.md),
                   const Text(
-                    'SK Mobile Shop',
+                    'Welcome Back',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.text),
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.text),
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Sign in to your dashboard · v$kAppVersionLabel',
+                  const Text(
+                    'Enter your 4-digit PIN to unlock the app',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 15),
+                    style: TextStyle(color: AppColors.muted, fontSize: 14),
                   ),
-                  const FieldLabel('Email'),
+                  const SizedBox(height: AppSpacing.xl),
+                  const FieldLabel('PIN'),
                   AppTextField(
-                    controller: _email,
-                    hint: 'owner@skmobile.local',
-                    keyboardType: TextInputType.emailAddress,
+                    controller: _pinController,
+                    hint: '••••',
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
                     onChanged: (_) => setState(() {}),
-                  ),
-                  const FieldLabel('Password'),
-                  AppTextField(
-                    controller: _password,
-                    hint: '••••••••',
-                    obscureText: !_showPassword,
-                    onChanged: (_) => setState(() {}),
-                    suffix: IconButton(
-                      icon: Icon(_showPassword ? AppIcons.eyeOff : AppIcons.eye, color: AppColors.muted),
-                      onPressed: () => setState(() => _showPassword = !_showPassword),
-                    ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: AppSpacing.md),
@@ -112,10 +118,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                   const SizedBox(height: AppSpacing.xl),
                   PrimaryButton(
-                    label: 'Sign in',
+                    label: 'Unlock',
                     loading: _loading,
-                    disabled: _email.text.isEmpty || _password.text.isEmpty,
+                    disabled: _pinController.text.trim().length < 4,
                     onPressed: _submit,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  TextButton(
+                    onPressed: _resetLogin,
+                    child: const Text('Forgot PIN? / Login with Password', style: TextStyle(color: AppColors.muted)),
                   ),
                 ],
               ),

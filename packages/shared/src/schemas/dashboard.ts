@@ -28,6 +28,9 @@ export type DashboardResponse = {
   };
   totals: {
     repairJobs: number;
+    salesCount?: number;
+    rechargeCount?: number;
+    transferCount?: number;
     repairSale: string;
     mobileSale: string;
   };

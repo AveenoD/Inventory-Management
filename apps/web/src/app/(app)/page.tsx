@@ -252,48 +252,31 @@ export default function TodayPage() {
       </div>
 
       <div className="dash-section-label">Today — {data.date}</div>
-      <div className="dash-metrics dash-metrics-6">
+      <div className="dash-metrics dash-metrics-4">
         <MetricCard
           icon={<CircleDollarSign size={18} />}
           label="Today's Sales"
-          value={formatMoney(data.salesTotal)}
-          sub={`${data.salesCount} bills`}
+          value={String(data.salesCount)}
           tone="blue"
         />
         <MetricCard
-          icon={<TrendingUp size={18} />}
-          label="Today's Profit"
-          value={formatMoney(data.salesProfit)}
-          sub="Sales profit"
-          tone="green"
-        />
-        <MetricCard
-          icon={<Wrench size={18} />}
-          label="Today's Repair Profit"
-          value={formatMoney(data.repairProfit)}
-          sub={`${data.repairDelivered} delivered · ${data.repairUndeliveredCount} undelivered`}
-          tone="orange"
-        />
-        <MetricCard
           icon={<Smartphone size={18} />}
-          label="Today's Recharge"
-          value={formatMoney(data.rechargeTotal)}
-          sub="Recharge income"
+          label="Today's Recharges"
+          value={String(data.rechargeCount ?? 0)}
           tone="purple"
         />
         <MetricCard
           icon={<ArrowLeftRight size={18} />}
-          label="Today's Transfer"
-          value={formatMoney(data.transferTotal)}
-          sub="Money transfer income"
+          label="Today's Transfers"
+          value={String(data.transferCount ?? 0)}
           tone="teal"
         />
         <MetricCard
-          icon={<TrendingUp size={18} />}
-          label="Total Profit Today"
-          value={formatMoney(data.todayTotalProfit)}
-          sub="Sales + recharge + transfer + repair"
-          tone="purple"
+          icon={<Wrench size={18} />}
+          label="Today's Repairs"
+          value={String(data.repairDelivered + data.repairUndeliveredCount)}
+          sub={`${data.repairDelivered} delivered · ${data.repairUndeliveredCount} pending`}
+          tone="orange"
         />
       </div>
 
@@ -314,27 +297,25 @@ export default function TodayPage() {
             <MetricCard
               icon={<CircleDollarSign size={18} />}
               label="Total Sales"
-              value={formatMoney(data.monthSalesTotal)}
-              sub="Mobile & accessories"
+              value={String(data.monthSalesCount ?? 0)}
               tone="blue"
             />
             <MetricCard
               icon={<Smartphone size={18} />}
-              label="Recharge + Transfer"
-              value={formatMoney(data.monthRechargeTransferTotal)}
-              sub="Month recharge & money transfer"
-              tone="green"
+              label="Total Recharges"
+              value={String(data.monthRechargeCount ?? 0)}
+              tone="purple"
+            />
+            <MetricCard
+              icon={<ArrowLeftRight size={18} />}
+              label="Total Transfers"
+              value={String(data.monthTransferCount ?? 0)}
+              tone="teal"
             />
             <MetricCard
               icon={<Wrench size={18} />}
-              label="Repair Profit"
-              value={formatMoney(data.monthRepairProfit)}
-              sub="Delivered repairs"
-              subExtra={
-                data.repairPendingCount > 0
-                  ? `Undelivered: ${formatMoney(data.repairPendingBalance)} (${data.repairPendingCount})`
-                  : "No undelivered repairs"
-              }
+              label="Total Repairs"
+              value={String(data.monthRepairCount ?? 0)}
               tone="orange"
             />
             <MetricCard
@@ -360,13 +341,6 @@ export default function TodayPage() {
                   Edit
                 </button>
               }
-            />
-            <MetricCard
-              icon={<Banknote size={18} />}
-              label="Month Total Profit"
-              value={formatMoney(data.monthNetProfit)}
-              sub="All income minus expenses"
-              tone="blue"
             />
           </div>
         </div>

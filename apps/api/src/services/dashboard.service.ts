@@ -84,6 +84,9 @@ async function computeDashboard(businessMonthId: string): Promise<DashboardRespo
         where: { businessMonthId },
         _sum: { jobCount: true },
       }),
+    () => prisma.sale.count({ where: { businessMonthId } }),
+    () => prisma.rechargeEntry.count({ where: { businessMonthId, isActive: true } }),
+    () => prisma.transferEntry.count({ where: { businessMonthId } }),
     ],
     3,
   );
@@ -101,6 +104,10 @@ async function computeDashboard(businessMonthId: string): Promise<DashboardRespo
   const partyAgg = batch[9] as SumAgg;
   const bankDays = batch[10] as Array<{ total: { toString(): string } }>;
   const repairJobs = batch[11] as SumAgg;
+  const salesCount = batch[12] as number;
+  const rechargeCount = batch[13] as number;
+  const transferCount = batch[14] as number;
+  console.log('DASHBOARD COUNTS:', { salesCount, rechargeCount, transferCount });
 
   const openingBalance = d(month.openingBalance);
   const moneyTransferTotal = d(moneyAgg._sum.total ?? 0);
@@ -176,6 +183,9 @@ async function computeDashboard(businessMonthId: string): Promise<DashboardRespo
     },
     totals: {
       repairJobs: Number(repairJobs._sum.jobCount ?? 0),
+      salesCount,
+      rechargeCount,
+      transferCount,
       repairSale: fmt(repairSaleTotal),
       mobileSale: fmt(mobileSaleTotal),
     },

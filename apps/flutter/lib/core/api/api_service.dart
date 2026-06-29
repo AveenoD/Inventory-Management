@@ -31,7 +31,7 @@ class ApiService {
       },
       onError: (error, handler) async {
         if (error.response?.statusCode == 401) {
-          await _tokenStore.clear();
+          await _tokenStore.clearToken();
           _onUnauthorized?.call();
         }
         handler.next(error);

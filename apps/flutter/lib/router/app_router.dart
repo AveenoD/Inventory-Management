@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../core/auth/auth_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/pin_setup_screen.dart';
+import '../features/auth/pin_login_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/expenses/expenses_screen.dart';
 import '../features/inventory/inventory_list_screen.dart';
@@ -50,13 +52,31 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final auth = ref.read(authProvider);
       if (auth.isLoading) return null;
-      final loggingIn = state.matchedLocation == '/login';
-      if (!auth.isAuthenticated && !loggingIn) return '/login';
-      if (auth.isAuthenticated && loggingIn) return '/';
+      
+      final loggingIn = state.matchedLocation == '/login' || 
+                        state.matchedLocation == '/pin-login' || 
+                        state.matchedLocation == '/pin-setup';
+                        
+      if (!auth.isAuthenticated && !loggingIn) {
+        return auth.hasPin ? '/pin-login' : '/login';
+      }
+      
+      if (auth.isAuthenticated && loggingIn && state.matchedLocation != '/pin-setup') {
+        return '/';
+      }
+      
       return null;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(
+        path: '/pin-setup',
+        builder: (_, state) => PinSetupScreen(
+          email: state.uri.queryParameters['email'] ?? '',
+          password: state.uri.queryParameters['password'] ?? '',
+        ),
+      ),
+      GoRoute(path: '/pin-login', builder: (_, __) => const PinLoginScreen()),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             _TabShell(navigationShell: navigationShell),

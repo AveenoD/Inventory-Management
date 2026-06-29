@@ -129,7 +129,19 @@ class _SaleInvoiceScreenState extends ConsumerState<SaleInvoiceScreen> {
                       onShare: _shareText,
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    SaleInvoiceView(invoice: _invoice!),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: constraints.maxWidth > 600 ? constraints.maxWidth : 600,
+                            ),
+                            child: SaleInvoiceView(invoice: _invoice!),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: AppSpacing.xl),
                   ],
                 ),

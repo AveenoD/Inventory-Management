@@ -4362,6 +4362,10 @@ select {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.dash-metrics-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .dash-metric-top {
   display: flex;
   align-items: flex-start;
@@ -4744,6 +4748,7 @@ select {
 
 @media (max-width: 1100px) {
   .dash-metrics,
+  .dash-metrics-4,
   .dash-metrics-6 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4874,6 +4879,7 @@ select {
   }
 
   .dash-metrics,
+  .dash-metrics-4,
   .dash-metrics-6 {
     grid-template-columns: 1fr;
   }
@@ -6315,7 +6321,7 @@ select {
 .product-label--48x24 {
   width: 48mm;
   height: 24mm;
-  padding: 1mm 1.5mm;
+  padding: 0.5mm 1mm;
 }
 .product-label--48x24 .product-label__shop {
   font-size: 8px;
@@ -6334,7 +6340,7 @@ select {
 .product-label--64x34 {
   width: 64mm;
   height: 34mm;
-  padding: 1.5mm 2mm;
+  padding: 1mm 1.5mm;
 }
 .product-label--64x34 .product-label__shop {
   font-size: 10px;
@@ -6523,7 +6529,7 @@ select {
 .product-label-sheet {
   display: flex;
   flex-wrap: wrap;
-  gap: 2mm;
+  gap: 1mm;
 }
 
 .pos-scan-banner {
@@ -6547,12 +6553,21 @@ select {
 }
 
 @media print {
+  @page {
+    margin: 5mm;
+  }
+
+  html, body, .app-main, .qr-labels-page {
+    background: #fff !important;
+  }
+
   /* Hide the UI on the barcode page */
   .qr-labels-toolbar,
   .qr-labels-grid,
   .qr-labels-pagination,
   .qr-labels-sizes,
-  .qr-print-queue {
+  .qr-print-queue,
+  .page-header {
     display: none !important;
   }
 
@@ -6569,7 +6584,7 @@ select {
   .product-label-sheet {
     display: flex;
     flex-wrap: wrap;
-    gap: 2mm;
+    gap: 1mm;
   }
 
   .product-label {
